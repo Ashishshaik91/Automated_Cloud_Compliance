@@ -1,0 +1,83 @@
+# ============================================================
+#  HIPAA Compliance Policies
+# ============================================================
+
+policies:
+
+  # HIPAA §164.312(a)(2)(iv) — Encryption at rest
+  - id: hipaa-s3-encryption
+    name: "HIPAA: PHI storage (S3) must be encrypted at rest"
+    resource_type: s3_bucket
+    framework: hipaa
+    severity: critical
+    opa_package: compliance.hipaa.s3
+    rules:
+      - field: encryption_enabled
+        operator: is_true
+    remediation: "Enable AES-256 or KMS encryption on all S3 buckets storing PHI."
+    reference: "HIPAA §164.312(a)(2)(iv)"
+
+  # HIPAA §164.312(a)(2)(i) — Access control (no public access to PHI)
+  - id: hipaa-s3-no-public
+    name: "HIPAA: S3 buckets with PHI must not be publicly accessible"
+    resource_type: s3_bucket
+    framework: hipaa
+    severity: critical
+    opa_package: compliance.hipaa.s3
+    rules:
+      - field: public_access_blocked
+        operator: is_true
+    remediation: "Apply S3 Block Public Access to prevent PHI exposure."
+    reference: "HIPAA §164.312(a)(1)"
+
+  # HIPAA §164.312(b) — Audit controls
+  - id: hipaa-cloudtrail-enabled
+    name: "HIPAA: Audit logging must be enabled (CloudTrail)"
+    resource_type: cloudtrail
+    framework: hipaa
+    severity: critical
+    opa_package: compliance.hipaa.cloudtrail
+    rules:
+      - field: is_logging
+        operator: is_true
+    remediation: "Enable CloudTrail to create audit trails of all API calls."
+    reference: "HIPAA §164.312(b)"
+
+  # HIPAA §164.312(a)(2)(i) — Multi-Factor Authentication
+  - id: hipaa-iam-mfa
+    name: "HIPAA: MFA required for all user access"
+    resource_type: iam_user
+    framework: hipaa
+    severity: high
+    opa_package: compliance.hipaa.iam
+    rules:
+      - field: mfa_enabled
+        operator: is_true
+    remediation: "Enable MFA for all users accessing systems with PHI."
+    reference: "HIPAA §164.312(d)"
+
+  # HIPAA §164.312(a)(2)(iv) — Database encryption
+  - id: hipaa-rds-encrypted
+    name: "HIPAA: Databases storing PHI must be encrypted"
+    resource_type: rds_instance
+    framework: hipaa
+    severity: critical
+    opa_package: compliance.hipaa.rds
+    rules:
+      - field: storage_encrypted
+        operator: is_true
+    remediation: "Enable storage encryption for all RDS instances handling PHI."
+    reference: "HIPAA §164.312(a)(2)(iv)"
+
+  # HIPAA §164.312(c) — Integrity: versioning/backup
+  - id: hipaa-s3-versioning
+    name: "HIPAA: S3 PHI storage must enable versioning for integrity"
+    resource_type: s3_bucket
+    framework: hipaa
+    severity: medium
+    opa_package: compliance.hipaa.s3
+    rules:
+      - field: versioning_enabled
+        operator: is_true
+    remediation: "Enable S3 versioning to maintain data integrity and support recovery."
+    reference: "HIPAA §164.312(c)(1)"

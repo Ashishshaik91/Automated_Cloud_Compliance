@@ -1,0 +1,70 @@
+# ============================================================
+#  GDPR Compliance Policies
+# ============================================================
+
+policies:
+
+  # GDPR Art.32 — Security of processing: encryption
+  - id: gdpr-s3-encryption
+    name: "GDPR Art.32: Personal data storage must be encrypted"
+    resource_type: s3_bucket
+    framework: gdpr
+    severity: high
+    opa_package: compliance.gdpr.s3
+    rules:
+      - field: encryption_enabled
+        operator: is_true
+    remediation: "Enable encryption-at-rest for all S3 buckets that may contain EU personal data."
+    reference: "GDPR Article 32(1)(a)"
+
+  # GDPR Art.32 — Pseudonymisation and no unnecessary public exposure
+  - id: gdpr-s3-no-public
+    name: "GDPR Art.32: Personal data must not be publicly accessible"
+    resource_type: s3_bucket
+    framework: gdpr
+    severity: high
+    opa_package: compliance.gdpr.s3
+    rules:
+      - field: public_access_blocked
+        operator: is_true
+    remediation: "Block all public access to S3 buckets containing personal data."
+    reference: "GDPR Article 32(1)(b)"
+
+  # GDPR Art.30 — Records of processing (audit logging)
+  - id: gdpr-cloudtrail-audit
+    name: "GDPR Art.30: Audit logging must be enabled for records of processing"
+    resource_type: cloudtrail
+    framework: gdpr
+    severity: high
+    opa_package: compliance.gdpr.cloudtrail
+    rules:
+      - field: is_logging
+        operator: is_true
+    remediation: "Enable CloudTrail to maintain records of all data processing activities."
+    reference: "GDPR Article 30"
+
+  # GDPR Art.5(1)(e) — Storage limitation: enable versioning/retention controls
+  - id: gdpr-s3-versioning
+    name: "GDPR Art.5: Enable data lifecycle management (versioning)"
+    resource_type: s3_bucket
+    framework: gdpr
+    severity: medium
+    opa_package: compliance.gdpr.s3
+    rules:
+      - field: versioning_enabled
+        operator: is_true
+    remediation: "Enable S3 versioning and configure lifecycle policies for data retention."
+    reference: "GDPR Article 5(1)(e)"
+
+  # GDPR Art.32 — RDS encryption
+  - id: gdpr-rds-encryption
+    name: "GDPR Art.32: Databases with personal data must be encrypted"
+    resource_type: rds_instance
+    framework: gdpr
+    severity: high
+    opa_package: compliance.gdpr.rds
+    rules:
+      - field: storage_encrypted
+        operator: is_true
+    remediation: "Ensure all database instances storing EU personal data use encryption at rest."
+    reference: "GDPR Article 32(1)(a)"

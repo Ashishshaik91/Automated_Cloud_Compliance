@@ -1,0 +1,96 @@
+# ============================================================
+#  PCI-DSS Compliance Policies
+#  Maps PCI-DSS requirements to cloud resource checks
+# ============================================================
+
+policies:
+
+  # PCI-DSS Req 3.4: Render PAN unreadable anywhere it is stored
+  - id: pci-s3-encryption-required
+    name: "PCI-DSS: S3 Bucket must use server-side encryption"
+    resource_type: s3_bucket
+    framework: pci_dss
+    severity: critical
+    opa_package: compliance.pci_dss.s3
+    rules:
+      - field: encryption_enabled
+        operator: is_true
+    remediation: "Enable server-side encryption (AES-256 or KMS) on the S3 bucket."
+    reference: "PCI-DSS v4.0 Req 3.5.1"
+
+  # PCI-DSS Req 1.3: Public access restriction
+  - id: pci-s3-no-public-access
+    name: "PCI-DSS: S3 Bucket must block all public access"
+    resource_type: s3_bucket
+    framework: pci_dss
+    severity: critical
+    opa_package: compliance.pci_dss.s3
+    rules:
+      - field: public_access_blocked
+        operator: is_true
+    remediation: "Enable S3 Block Public Access settings for all four options."
+    reference: "PCI-DSS v4.0 Req 1.3.2"
+
+  # PCI-DSS Req 10.2: Implement audit trails
+  - id: pci-cloudtrail-enabled
+    name: "PCI-DSS: CloudTrail logging must be enabled"
+    resource_type: cloudtrail
+    framework: pci_dss
+    severity: critical
+    opa_package: compliance.pci_dss.cloudtrail
+    rules:
+      - field: is_logging
+        operator: is_true
+    remediation: "Enable CloudTrail logging in all regions."
+    reference: "PCI-DSS v4.0 Req 10.2"
+
+  - id: pci-cloudtrail-validation
+    name: "PCI-DSS: CloudTrail log file validation must be enabled"
+    resource_type: cloudtrail
+    framework: pci_dss
+    severity: high
+    opa_package: compliance.pci_dss.cloudtrail
+    rules:
+      - field: log_file_validation
+        operator: is_true
+    remediation: "Enable log file validation on CloudTrail trail."
+    reference: "PCI-DSS v4.0 Req 10.3.3"
+
+  # PCI-DSS Req 8.3: MFA for all non-console access
+  - id: pci-iam-mfa-required
+    name: "PCI-DSS: IAM users must have MFA enabled"
+    resource_type: iam_user
+    framework: pci_dss
+    severity: critical
+    opa_package: compliance.pci_dss.iam
+    rules:
+      - field: mfa_enabled
+        operator: is_true
+    remediation: "Enable MFA for all IAM users with console access."
+    reference: "PCI-DSS v4.0 Req 8.3.6"
+
+  # PCI-DSS Req 3.4: Database encryption
+  - id: pci-rds-encryption-required
+    name: "PCI-DSS: RDS instances must have storage encryption enabled"
+    resource_type: rds_instance
+    framework: pci_dss
+    severity: critical
+    opa_package: compliance.pci_dss.rds
+    rules:
+      - field: storage_encrypted
+        operator: is_true
+    remediation: "Recreate the RDS instance with encryption enabled. Encryption cannot be enabled on existing instances."
+    reference: "PCI-DSS v4.0 Req 3.5.1"
+
+  # PCI-DSS Req 1.2: Restrict inbound/outbound traffic to cardholder data env
+  - id: pci-rds-not-public
+    name: "PCI-DSS: RDS instances must not be publicly accessible"
+    resource_type: rds_instance
+    framework: pci_dss
+    severity: critical
+    opa_package: compliance.pci_dss.rds
+    rules:
+      - field: publicly_accessible
+        operator: is_false
+    remediation: "Modify the RDS instance to set PubliclyAccessible=false."
+    reference: "PCI-DSS v4.0 Req 1.3"

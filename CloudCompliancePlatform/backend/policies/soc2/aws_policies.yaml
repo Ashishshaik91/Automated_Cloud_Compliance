@@ -1,0 +1,83 @@
+# ============================================================
+#  SOC 2 Type II Compliance Policies
+# ============================================================
+
+policies:
+
+  # CC6.1 — Logical and Physical Access Controls
+  - id: soc2-iam-mfa
+    name: "SOC2 CC6.1: MFA must be enabled for all user accounts"
+    resource_type: iam_user
+    framework: soc2
+    severity: high
+    opa_package: compliance.soc2.iam
+    rules:
+      - field: mfa_enabled
+        operator: is_true
+    remediation: "Enable MFA for all users to meet SOC 2 CC6.1 access control requirements."
+    reference: "SOC 2 CC6.1"
+
+  # CC6.7 — Restrict Transmission of Confidential Information
+  - id: soc2-s3-no-public
+    name: "SOC2 CC6.7: S3 buckets must not be publicly accessible"
+    resource_type: s3_bucket
+    framework: soc2
+    severity: high
+    opa_package: compliance.soc2.s3
+    rules:
+      - field: public_access_blocked
+        operator: is_true
+    remediation: "Enable S3 Block Public Access to restrict transmission of confidential information."
+    reference: "SOC 2 CC6.7"
+
+  # CC7.2 — System Monitoring
+  - id: soc2-cloudtrail-monitoring
+    name: "SOC2 CC7.2: System monitoring must be enabled (CloudTrail)"
+    resource_type: cloudtrail
+    framework: soc2
+    severity: high
+    opa_package: compliance.soc2.cloudtrail
+    rules:
+      - field: is_logging
+        operator: is_true
+    remediation: "Enable CloudTrail logging to meet SOC 2 CC7.2 system monitoring requirements."
+    reference: "SOC 2 CC7.2"
+
+  # A1.2 — Availability: Multi-AZ and high availability
+  - id: soc2-rds-multi-az
+    name: "SOC2 A1.2: Databases must use Multi-AZ for high availability"
+    resource_type: rds_instance
+    framework: soc2
+    severity: medium
+    opa_package: compliance.soc2.rds
+    rules:
+      - field: multi_az
+        operator: is_true
+    remediation: "Enable Multi-AZ deployment for RDS instances to ensure availability."
+    reference: "SOC 2 A1.2"
+
+  # CC6.6 — Logical Access from External Sources
+  - id: soc2-rds-not-public
+    name: "SOC2 CC6.6: Database instances must not be publicly accessible"
+    resource_type: rds_instance
+    framework: soc2
+    severity: high
+    opa_package: compliance.soc2.rds
+    rules:
+      - field: publicly_accessible
+        operator: is_false
+    remediation: "Restrict database access to VPC internal traffic only."
+    reference: "SOC 2 CC6.6"
+
+  # CC6.1 — Encryption of data in transit and at rest
+  - id: soc2-s3-encryption
+    name: "SOC2 CC6.1: Data at rest must be encrypted"
+    resource_type: s3_bucket
+    framework: soc2
+    severity: high
+    opa_package: compliance.soc2.s3
+    rules:
+      - field: encryption_enabled
+        operator: is_true
+    remediation: "Enable server-side encryption on all S3 buckets."
+    reference: "SOC 2 CC6.1"
