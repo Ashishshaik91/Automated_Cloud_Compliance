@@ -14,11 +14,15 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from app.api import alerts, cloud_accounts, compliance, reports, scans
+from app.api import alerts, audit_logs, cloud_accounts, compliance, dspm, orgs, reports, scans, users, violations
 from app.auth.router import router as auth_router
 from app.config import get_settings
 from app.models.database import init_db
-from app.models import user, compliance as compliance_models  # noqa: F401 — registers models to Base
+from app.models import user, compliance as compliance_models, org, audit_log, violations as violations_models, dspm as dspm_models  # noqa: F401 — registers models
+from app.core.seeder import seed_default_users
+from app.core.violations_engine import seed_violation_rules, run_violations_engine
+from app.core.dspm_engine import run_dspm_engine
+from app.core.correlator import run_correlator
 from app.utils.logger import configure_logging
 
 settings = get_settings()
@@ -32,6 +36,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     logger.info("Starting Cloud Compliance Platform", env=settings.app_env)
     await init_db()
     logger.info("Database initialized")
+    # Seed default users (idempotent — skips if already exist)
+    from app.models.database import AsyncSessionLocal
+    async with AsyncSessionLocal() as db:
+        async with db.begin():
+            await seed_default_users(db)
+    logger.info("Default users seeded")
+    # Seed and run violations engine + DSPM engine + correlator
+    async with AsyncSessionLocal() as db:
+        async with db.begin():
+            await seed_violation_rules(db)
+            await run_violations_engine(db)
+            await run_dspm_engine(db)
+            await run_correlator(db)
+    logger.info("Violations + DSPM engines initialised")
     yield
     logger.info("Shutting down Cloud Compliance Platform")
 
@@ -108,6 +126,11 @@ app.include_router(scans.router, prefix=f"{API_PREFIX}/scans", tags=["Scanning"]
 app.include_router(reports.router, prefix=f"{API_PREFIX}/reports", tags=["Reports"])
 app.include_router(alerts.router, prefix=f"{API_PREFIX}/alerts", tags=["Alerts"])
 app.include_router(cloud_accounts.router, prefix=f"{API_PREFIX}/cloud-accounts", tags=["Cloud Accounts"])
+app.include_router(users.router, prefix=f"{API_PREFIX}/users", tags=["User Management"])
+app.include_router(orgs.router,          prefix=f"{API_PREFIX}/orgs",        tags=["Organizations"])
+app.include_router(audit_logs.router,    prefix=f"{API_PREFIX}/audit-logs", tags=["Audit Logs"])
+app.include_router(violations.router,    prefix=f"{API_PREFIX}/violations",  tags=["Violations"])
+app.include_router(dspm.router,          prefix=f"{API_PREFIX}/dspm",        tags=["DSPM"])
 
 
 # ---- Health / Readiness ----

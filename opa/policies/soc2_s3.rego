@@ -6,8 +6,8 @@ import rego.v1
 default allow := false
 
 allow if {
-    input.resource.encryption_enabled == true
     input.resource.public_access_blocked == true
+    input.resource.encryption_enabled == true
 }
 
 deny contains reason if {

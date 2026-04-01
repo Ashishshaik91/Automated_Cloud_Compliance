@@ -35,8 +35,10 @@ services:
       minio:
         condition: service_healthy
     volumes:
-      - ./backend/policies:/app/policies:ro
+      - ./backend/policies:/app/policies:rw
       - ./backend/tests:/app/tests:ro
+      - ./secrets:/app/secrets:ro
+      - ./opa/policies:/app/opa_policies:rw
     networks:
       - compliance_net
     logging: *default-logging
@@ -58,7 +60,8 @@ services:
       - redis
       - postgres
     volumes:
-      - ./backend/policies:/app/policies:ro
+      - ./backend/policies:/app/policies:rw
+      - ./secrets:/app/secrets:ro
     networks:
       - compliance_net
     logging: *default-logging

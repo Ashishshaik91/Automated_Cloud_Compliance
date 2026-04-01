@@ -6,8 +6,8 @@ import rego.v1
 default allow := false
 
 allow if {
-    input.resource.ip_configuration_require_ssl == true
     input.resource.backup_enabled == true
+    input.resource.ip_configuration_require_ssl == true
 }
 
 deny contains reason if {

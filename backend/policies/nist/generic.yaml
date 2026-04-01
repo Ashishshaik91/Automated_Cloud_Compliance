@@ -1,0 +1,37 @@
+name: "NIST SP 800-53"
+policies:
+  - id: nist-audit-logging
+    name: "Audit Logging Enabled (AU-2)"
+    resource_type: "CloudTrail"
+    opa_package: "compliance.nist.cloudtrail"
+    severity: "high"
+    rules:
+      - field: "audit_logging_enabled"
+        operator: "is_true"
+
+  - id: nist-crypto-fips
+    name: "FIPS Validated Crypto (SC-13)"
+    resource_type: "S3 Bucket"
+    opa_package: "compliance.nist.s3"
+    severity: "critical"
+    rules:
+      - field: "fips_validated"
+        operator: "is_true"
+
+  - id: nist-iam-mfa
+    name: "Authenticator Management (IA-5)"
+    resource_type: "IAM User"
+    opa_package: "compliance.nist.iam"
+    severity: "critical"
+    rules:
+      - field: "mfa_enabled"
+        operator: "is_true"
+
+  - id: nist-data-at-rest
+    name: "Protection of Info at Rest (SC-28)"
+    resource_type: "RDS Instance"
+    opa_package: "compliance.nist.rds"
+    severity: "critical"
+    rules:
+      - field: "encryption_at_rest"
+        operator: "is_true"

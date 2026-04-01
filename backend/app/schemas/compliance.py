@@ -49,7 +49,7 @@ class ComplianceCheckResponse(BaseModel):
 
 class ScanTriggerRequest(BaseModel):
     account_id: int
-    framework: str = Field(..., pattern="^(pci_dss|hipaa|gdpr|soc2|all)$")
+    framework: str = Field(..., pattern="^(pci_dss|hipaa|gdpr|soc2|nist|cis|owasp|custom|all)$")
     dry_run: bool = False
 
 
@@ -75,7 +75,7 @@ class ScanWithChecksResponse(ScanResultResponse):
 
 class ReportRequest(BaseModel):
     scan_id: int
-    format: str = Field("pdf", pattern="^(pdf|html|json)$")
+    format: str = Field("pdf", pattern="^(pdf|csv|html|json)$")
     include_evidence: bool = True
 
 
@@ -111,3 +111,12 @@ class ComplianceSummary(BaseModel):
     high_failures: int
     last_scan_at: Optional[datetime]
     trend: str  # improving | degrading | stable
+
+# ---- Custom Policy ----
+
+class CustomPolicyCreate(BaseModel):
+    name: str = Field(..., min_length=2, max_length=100)
+    resource_type: str = Field(..., min_length=2, max_length=100)
+    severity: str = Field(..., pattern="^(low|medium|high|critical)$")
+    field: str = Field(..., min_length=1, max_length=100)
+    operator: str = Field(..., min_length=2, max_length=50)

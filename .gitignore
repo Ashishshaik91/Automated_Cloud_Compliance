@@ -68,3 +68,15 @@ Thumbs.db
 # ML models (large binary files)
 backend/app/ml/models/*.pkl
 backend/app/ml/models/*.joblib
+
+# Temporary debug files
+*trace*.txt
+*lint_out*.txt
+backend_l*.txt
+frontend/lint_out.json
+
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup

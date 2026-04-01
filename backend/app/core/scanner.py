@@ -100,7 +100,7 @@ class ScanOrchestrator:
                     scan_id=scan.id,
                     policy_id=result["policy_id"],
                     policy_name=result["policy_name"],
-                    framework=framework,
+                    framework=result["framework"],
                     resource_id=result.get("resource_id"),
                     resource_type=result.get("resource_type"),
                     status=status,
@@ -156,6 +156,11 @@ def run_scheduled_scan(self, account_id: int, framework: str = "all") -> dict[st
 
 
 async def _async_scheduled_scan(account_id: int, framework: str) -> dict[str, Any]:
+    from app.models.database import engine
+    # CRITICAL: Force the SQLAlchemy async engine to drop old connections tied
+    # to dead event loops from previous Celery task runs
+    await engine.dispose()
+    
     async with AsyncSessionLocal() as db:
         from sqlalchemy import select
         result = await db.execute(

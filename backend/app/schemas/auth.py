@@ -3,8 +3,11 @@ Pydantic schemas for Auth endpoints.
 """
 
 from datetime import datetime
+from typing import Literal, Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
+
+RoleType = Literal["admin", "auditor", "dev", "viewer"]
 
 
 class UserCreate(BaseModel):
@@ -35,7 +38,32 @@ class UserResponse(BaseModel):
     full_name: str
     role: str
     is_active: bool
+    organization_id: Optional[int] = None
     created_at: datetime
+    account_roles: list = []  # List[AccountRoleSchema] populated by endpoint
+
+
+class AdminUserCreate(BaseModel):
+    """Admin-only schema to create a user with an explicit role and org assignment."""
+
+    email: EmailStr
+    full_name: str = Field(..., min_length=2, max_length=255)
+    password: str = Field(..., min_length=12, max_length=72)
+    role: RoleType = "dev"
+    organization_id: Optional[int] = None
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        if not any(c.isupper() for c in v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not any(c.islower() for c in v):
+            raise ValueError("Password must contain at least one lowercase letter")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Password must contain at least one digit")
+        if not any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in v):
+            raise ValueError("Password must contain at least one special character")
+        return v
 
 
 class TokenResponse(BaseModel):

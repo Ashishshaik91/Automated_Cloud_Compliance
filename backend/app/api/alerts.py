@@ -12,9 +12,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import CurrentUser
 from app.models.database import get_db
 from app.schemas.compliance import AlertResponse
+from app.config import get_settings
+from pydantic import BaseModel
 
 router = APIRouter()
 logger = structlog.get_logger(__name__)
+
+class TestAlertRequest(BaseModel):
+    email: str
 
 
 @router.get("/", response_model=list[AlertResponse])
@@ -39,6 +44,31 @@ async def acknowledge_alert(
     """Acknowledge a compliance alert."""
     logger.info("Alert acknowledged", alert_id=alert_id, user_id=current_user.id)
     return {"status": "acknowledged", "alert_id": alert_id}
+
+@router.post("/test-email")
+async def send_test_alert_email(
+    req: TestAlertRequest,
+    current_user: CurrentUser,
+) -> dict:
+    """Trigger a test email using SMTP config."""
+    settings = get_settings()
+    if not settings.smtp_host:
+        raise HTTPException(status_code=400, detail="SMTP is not configured in environment variables.")
+        
+    smtp_pass = settings.smtp_password.get_secret_value() if settings.smtp_password else ""
+    success = await send_email_alert(
+        to_email=req.email,
+        subject="Cloud Compliance Platform — Test Alert",
+        body="<h2>Configuration Successful!</h2><p>Your SMTP environment variables are working correctly.</p><p>You will now receive compliance alerts at this address.</p>",
+        smtp_host=settings.smtp_host,
+        smtp_port=settings.smtp_port,
+        smtp_user=settings.smtp_user,
+        smtp_password=smtp_pass,
+        from_email=settings.smtp_from_email,
+    )
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to send test email. Check backend logs or SMTP credentials.")
+    return {"status": "success", "message": f"Test email sent to {req.email}"}
 
 
 async def send_slack_alert(webhook_url: str, message: str, severity: str) -> bool:

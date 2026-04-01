@@ -1,0 +1,779 @@
+1: 0 | import React, { useState, useEffect, useMemo } from 'react'
+2: 0 | import {
+3: 0 | AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+4: 0 | PieChart, Pie, Sector, Cell
+5: 0 | } from 'recharts'
+6: 0 | import api from '../api/client'
+7: 0 | import TerminalWindow from '../components/TerminalWindow'
+8: 0 | 
+9: 0 | const FRAMEWORKS = ['pci_dss', 'hipaa', 'gdpr', 'soc2', 'nist', 'cis', 'owasp', 'custom']
+10: 0 | const FW_NAMES = {
+11: 0 | pci_dss: 'PCI-DSS', hipaa: 'HIPAA', gdpr: 'GDPR', soc2: 'SOC2',
+12: 0 | nist: 'NIST', cis: 'CIS', owasp: 'OWASP', custom: 'CUSTOM'
+13: 0 | }
+14: 0 | 
+15: 0 | const C = {
+16: 0 | purple: '#8b5cf6', purpleDim: '#6d28d9',
+17: 0 | blue: '#3b82f6', cyan: '#06b6d4',
+18: 0 | green: '#50fa7b', yellow: '#f1fa8c',
+19: 0 | red: '#ff5555', orange: '#FFB86C',
+20: 0 | dim: 'rgba(255,255,255,0.35)',
+21: 0 | text: 'rgba(255,255,255,0.88)',
+22: 0 | }
+23: 0 | 
+24: 0 | const mono = { fontFamily: 'var(--font-mono)' }
+25: 0 | const scoreColor = s => s >= 80 ? C.green : s >= 60 ? C.yellow : C.red
+26: 0 | 
+27: 0 | // ── sub-components ────────────────────────────────────────────────────────────
+28: 0 | const FilterButton = ({ label, count, color, active, onClick }) => (
+29: 0 | <button onClick={onClick} style={{
+30: 0 | appearance: 'none',
+31: 0 | WebkitAppearance: 'none',
+32: 0 | margin: 0,
+33: 0 | borderRadius: 0,
+34: 0 | background: active ? `${color}22` : 'transparent',
+35: 0 | color: active ? color : C.dim,
+36: 0 | border: `1px solid ${active ? color : color + '55'}`,
+37: 0 | padding: '3px 9px',
+38: 0 | fontSize: 9,
+39: 0 | fontFamily: 'var(--font-mono)',
+40: 0 | cursor: 'pointer',
+41: 0 | fontWeight: 700,
+42: 0 | outline: 'none',
+43: 0 | display: 'flex',
+44: 0 | gap: 6,
+45: 0 | alignItems: 'center',
+46: 0 | transition: 'none',
+47: 0 | }}>
+48: 0 | {label}
+49: 0 | {count !== undefined && (
+50: 0 | <span style={{ color: active ? color : C.text, fontWeight: 900 }}>{count}</span>
+51: 0 | )}
+52: 0 | </button>
+53: 0 | )
+54: 0 | 
+55: 0 | const InfoRow = ({ label, value, vc }) => (
+56: 1 | <div style={{ display: 'flex', gap: 6, fontSize: 11, lineHeight: '20px', ...mono }}>
+57: 1 | <span style={{ color: C.purple, minWidth: 100, flexShrink: 0 }}>{label}</span>
+58: 1 | <span style={{ color: vc || C.text }}>{value}</span>
+59: 0 | </div>
+60: 0 | )
+61: 0 | 
+62: 0 | const HBar = ({ label, pct, color }) => (
+63: 1 | <div style={{ marginBottom: 11 }}>
+64: 2 | <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3, fontSize: 10, ...mono }}>
+65: 2 | <span style={{ color: C.cyan }}>{label}</span>
+66: 2 | <span style={{ color: color, fontWeight: 700 }}>{pct > 0 ? `${pct.toFixed(1)}%` : 'NO DATA'}</span>
+67: 1 | </div>
+68: 2 | <div style={{ height: 5, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
+69: 3 | <div style={{
+70: 3 | height: '100%', width: `${Math.min(100, Math.max(0, pct))}%`,
+71: 3 | background: `linear-gradient(90deg, ${color}bb, ${color})`,
+72: 3 | boxShadow: `0 0 8px ${color}44`, transition: 'width 0.7s ease'
+73: 3 | }} />
+74: 2 | </div>
+75: 1 | </div>
+76: 1 | )
+77: 1 | 
+78: 1 | const CustomTooltip = ({ active, payload, label }) => {
+79: 1 | if (!active || !payload?.length) return null
+80: 1 | return (
+81: 2 | <div style={{ background: '#0d0a1c', border: `1px solid ${C.purple}`, padding: '6px 10px', fontSize: 10, ...mono }}>
+82: 2 | <div style={{ color: C.dim }}>[ {label} ]</div>
+83: 2 | <div style={{ color: C.purple, fontWeight: 800 }}>SCORE: {payload[0].value}%</div>
+84: 1 | </div>
+85: 1 | )
+86: 1 | }
+87: 1 | 
+88: 1 | // ── Active donut sector (expanded + glowing on hover/click) ──────────────────
+89: 1 | const ActiveSectorShape = (props) => {
+90: 1 | const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill } = props
+91: 1 | return (
+92: 1 | <g>
+93: 1 | <Sector cx={cx} cy={cy} innerRadius={innerRadius - 4} outerRadius={outerRadius + 8}
+94: 1 | startAngle={startAngle} endAngle={endAngle}
+95: 1 | fill={fill} opacity={0.18} />
+96: 1 | <Sector cx={cx} cy={cy} innerRadius={innerRadius} outerRadius={outerRadius + 5}
+97: 1 | startAngle={startAngle} endAngle={endAngle}
+98: 1 | fill={fill} stroke={fill} strokeWidth={1.5} />
+99: 1 | </g>
+100: 1 | )
+101: 1 | }
+102: 1 | 
+103: 1 | // ── Severity Donut ────────────────────────────────────────────────────────────
+104: 1 | const SeverityDonut = ({ data, activeIdx, onHover, onClick }) => {
+105: 1 | const total = data.reduce((a, b) => a + b.val, 0) || 1
+106: 1 | return (
+107: 2 | <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+108: 2 | <PieChart width={160} height={160}>
+109: 2 | <Pie
+110: 2 | data={data.map(d => ({ name: d.name, value: d.val, color: d.color }))}
+111: 2 | cx={75} cy={75}
+112: 2 | innerRadius={44} outerRadius={68}
+113: 2 | paddingAngle={3}
+114: 2 | dataKey="value"
+115: 2 | activeIndex={activeIdx}
+116: 2 | activeShape={ActiveSectorShape}
+117: 2 | onMouseEnter={(_, idx) => onHover(idx)}
+118: 2 | onMouseLeave={() => onHover(null)}
+119: 2 | onClick={(_, idx) => onClick(idx)}
+120: 2 | style={{ cursor: 'pointer', outline: 'none' }}
+121: 2 | >
+122: 2 | {data.map((d, i) => (
+123: 2 | <Cell key={d.name} fill={d.color}
+124: 2 | opacity={activeIdx === null || activeIdx === i ? 1 : 0.35}
+125: 2 | style={{ transition: 'opacity 0.2s' }} />
+126: 2 | ))}
+127: 2 | </Pie>
+128: 2 | </PieChart>
+129: 2 | 
+130: 2 | {/* centre label */}
+131: 3 | <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+132: 3 | {data.map((d, i) => (
+133: 4 | <div key={d.name} onClick={() => onClick(i)}
+134: 4 | style={{
+135: 4 | display: 'flex', alignItems: 'center', gap: 6,
+136: 4 | fontSize: 10, fontFamily: 'var(--font-mono)', cursor: 'pointer',
+137: 4 | opacity: activeIdx === null || activeIdx === i ? 1 : 0.32,
+138: 4 | transition: 'opacity 0.2s'
+139: 4 | }}>
+140: 5 | <div style={{ width: 7, height: 7, background: d.color, boxShadow: activeIdx === i ? `0 0 8px ${d.color}` : 'none', transition: 'box-shadow 0.2s' }} />
+141: 5 | <span style={{ color: d.color, fontWeight: 800, minWidth: 62 }}>{d.name}</span>
+142: 5 | <span style={{ color: 'rgba(255,255,255,0.55)' }}>{d.val}</span>
+143: 5 | <span style={{ color: 'rgba(255,255,255,0.28)', fontSize: 9 }}>({((d.val / total) * 100).toFixed(1)}%)</span>
+144: 4 | </div>
+145: 4 | ))}
+146: 3 | </div>
+147: 2 | </div>
+148: 2 | )
+149: 2 | }
+150: 2 | 
+151: 2 | // ── ASCII wolf ────────────────────────────────────────────────────────────────
+152: 2 | const WOLF = `                              __
+153: 2 | .d\$\$b
+154: 2 | .' TO\$;\\
+155: 2 | /  : TP._;
+156: 2 | / _.;  :Tb|
+157: 2 | /   /   ;j\$j
+158: 2 | _.-"       d\$\$\$\$
+159: 2 | .' ..       d\$\$\$\$;
+160: 2 | /  /P'      d\$\$\$\$P. |\\
+161: 2 | /   "      .d\$\$\$P' |\\^"l
+162: 2 | .'           \`T\$P^"""""  :
+163: 2 | ._.'      _.'                ;
+164: 2 | \`-.-".-'-' ._.       _.-"    .-"
+165: 2 | \`.-" _____  ._              .-"
+166: 2 | -(.g\$\$\$\$\$\$\$\$b.              .'
+167: 2 | ""^^T\$\$\$P^)            .(:
+168: 2 | _/  -"  /.'         /:/;
+169: 2 | ._.'-'\`-'  ")/         /;/;
+170: 2 | \`-.-"..--""   " /         /  ;
+171: 2 | .-" ..--""        -'          :
+172: 2 | ..--""--.-"         (\\      .-(\\
+173: 2 | ..--""              \`-\\(\\/;\`
+174: 2 | _.                      :
+175: 2 | ;\`-
+176: 2 | :\\
+177: 2 | ;  bug`
+178: 2 | 
+179: 2 | // ── main ─────────────────────────────────────────────────────────────────────
+180: 2 | export default function Dashboard() {
+181: 2 | const [loading,   setLoading]   = useState(true)
+182: 2 | const [scanning,  setScanning]  = useState(false)
+183: 2 | const [summary,   setSummary]   = useState({ total_accounts: 0, overall_score: 0, critical_failures: 0, high_failures: 0 })
+184: 2 | const [checks,    setChecks]    = useState([])
+185: 2 | const [scores,    setScores]    = useState([])
+186: 2 | const [trend,     setTrend]     = useState([])
+187: 2 | const [sevDist,   setSevDist]   = useState([])
+188: 2 | const [fwFilter,  setFwFilter]  = useState('All')
+189: 2 | const [sevFilter, setSevFilter] = useState(null)
+190: 2 | 
+191: 2 | // ── violations + DSPM state ──
+192: 2 | const [violations,    setViolations]    = useState([])
+193: 2 | const [violSummary,   setViolSummary]   = useState(null)
+194: 2 | const [violSevFilter, setViolSevFilter] = useState(null)
+195: 2 | const [dspmFindings,  setDspmFindings]  = useState([])
+196: 2 | const [dspmSummary,   setDspmSummary]   = useState(null)
+197: 2 | const [correlations,  setCorrelations]  = useState([])
+198: 2 | const [dspmFilter,    setDspmFilter]    = useState(null)  // risk_level filter
+199: 2 | 
+200: 2 | const fetchData = async () => {
+201: 2 | try {
+202: 2 | setLoading(true)
+203: 2 | const [sumR, chkR, scnR] = await Promise.all([
+204: 2 | api.get('/compliance/summary'),
+205: 2 | api.get('/compliance/checks?limit=200'),
+206: 2 | api.get('/scans'),
+207: 2 | ])
+208: 2 | setSummary(sumR.data)
+209: 2 | setChecks(chkR.data)
+210: 2 | 
+211: 2 | const dist = { critical: 0, high: 0, medium: 0, low: 0 }
+212: 2 | chkR.data.forEach(c => { if (c.status === 'fail' && dist[c.severity] !== undefined) dist[c.severity]++ })
+213: 2 | setSevDist([
+214: 2 | { name: 'CRITICAL', val: dist.critical, color: C.red },
+215: 2 | { name: 'HIGH',     val: dist.high,     color: C.orange },
+216: 2 | { name: 'MEDIUM',   val: dist.medium,   color: C.cyan },
+217: 2 | { name: 'LOW',      val: dist.low,      color: C.purple },
+218: 2 | ])
+219: 2 | 
+220: 2 | const scans  = scnR.data || []
+221: 2 | const sorted = [...scans].sort((a, b) => new Date(b.started_at) - new Date(a.started_at))
+222: 2 | const fwMap  = {}
+223: 2 | FRAMEWORKS.forEach(fw => {
+224: 2 | const s = sorted.find(x => x.framework === fw || x.framework === 'all')
+225: 2 | if (s) fwMap[fw] = s
+226: 2 | })
+227: 2 | setScores(FRAMEWORKS.map(fw => ({
+228: 2 | name: FW_NAMES[fw], score: fwMap[fw] ? fwMap[fw].compliance_score : 0, hasData: !!fwMap[fw],
+229: 2 | })))
+230: 2 | 
+231: 2 | const dm = {}
+232: 2 | scans.forEach(s => {
+233: 2 | const d = new Date(s.started_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+234: 2 | if (!dm[d]) dm[d] = []
+235: 2 | dm[d].push(s.compliance_score)
+236: 2 | })
+237: 2 | const td = Object.keys(dm)
+238: 2 | .map(d => ({ date: d, score: Number((dm[d].reduce((a, b) => a + b, 0) / dm[d].length).toFixed(1)) }))
+239: 2 | .sort((a, b) => new Date(a.date) - new Date(b.date)).slice(-12)
+240: 2 | setTrend(td.length ? td : [{ date: 'none', score: null }])
+241: 2 | } catch (err) { console.error(err) }
+242: 2 | finally { setLoading(false) }
+243: 2 | }
+244: 2 | 
+245: 2 | useEffect(() => { fetchData() }, [])
+246: 2 | 
+247: 2 | const fetchViolationsDspm = async () => {
+248: 2 | try {
+249: 2 | const [vR, vsR, dR, dsR, cR] = await Promise.allSettled([
+250: 2 | api.get('/violations?limit=200'),
+251: 2 | api.get('/violations/summary'),
+252: 2 | api.get('/dspm/findings?limit=100'),
+253: 2 | api.get('/dspm/summary'),
+254: 2 | api.get('/dspm/correlations?limit=50'),
+255: 2 | ])
+256: 2 | if (vR.status  === 'fulfilled') setViolations(vR.value.data)
+257: 2 | if (vsR.status === 'fulfilled') setViolSummary(vsR.value.data)
+258: 2 | if (dR.status  === 'fulfilled') setDspmFindings(dR.value.data)
+259: 2 | if (dsR.status === 'fulfilled') setDspmSummary(dsR.value.data)
+260: 2 | if (cR.status  === 'fulfilled') setCorrelations(cR.value.data)
+261: 2 | } catch (err) { console.error('violations/dspm fetch', err) }
+262: 2 | }
+263: 2 | 
+264: 2 | useEffect(() => { fetchViolationsDspm() }, [])
+265: 2 | 
+266: 2 | const triggerScan = async () => {
+267: 2 | setScanning(true)
+268: 2 | try {
+269: 2 | await Promise.allSettled([
+270: 2 | api.post('/scans/trigger', { account_id: 1, framework: 'all' }),
+271: 2 | api.post('/scans/trigger', { account_id: 2, framework: 'all' }),
+272: 2 | ])
+273: 2 | setTimeout(fetchData, 4000)
+274: 2 | } catch { /* ignore */ }
+275: 2 | setScanning(false)
+276: 2 | }
+277: 2 | 
+278: 2 | const filteredChecks = useMemo(() => {
+279: 2 | let list = fwFilter === 'All' ? checks : checks.filter(c => c.framework === fwFilter)
+280: 2 | if (sevFilter) list = list.filter(c => c.severity.toLowerCase() === sevFilter.toLowerCase())
+281: 2 | return list
+282: 2 | }, [checks, fwFilter, sevFilter])
+283: 2 | 
+284: 2 | if (loading) return (
+285: 3 | <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', ...mono, color: C.purple, fontSize: 12 }}>
+286: 4 | <div style={{ lineHeight: 2.2 }}>
+287: 4 | <div>$ ./compliance_engine --boot --verbose</div>
+288: 4 | <div style={{ color: C.green }}>[ OK ] Connecting to cloud providers...</div>
+289: 4 | <div style={{ color: C.green }}>[ OK ] Loading OPA policy engine...</div>
+290: 4 | <div style={{ color: C.cyan  }}>[ .. ] Fetching compliance data...</div>
+291: 3 | </div>
+292: 2 | </div>
+293: 2 | )
+294: 2 | 
+295: 2 | return (
+296: 3 | <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 32 }}>
+297: 3 | 
+298: 3 | {/* ── top bar ─────────────────────────────────────────────────────────── */}
+299: 4 | <div style={{
+300: 4 | display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+301: 4 | borderBottom: `1px solid ${C.purple}33`, paddingBottom: 12, ...mono
+302: 4 | }}>
+303: 5 | <div>
+304: 5 | <div style={{ fontSize: 10, color: C.purple }}>$ whoami</div>
+305: 6 | <div style={{ fontSize: 18, fontWeight: 900, color: C.text }}>
+306: 6 | compliance-dashboard{' '}
+307: 6 | <span style={{ color: C.purple, fontWeight: 400, fontSize: 13 }}>--workspace-01</span>
+308: 5 | </div>
+309: 4 | </div>
+310: 5 | <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+311: 5 | {[
+312: 5 | { label: 'SCORE',    val: `${summary.overall_score}%`, color: scoreColor(summary.overall_score) },
+313: 5 | { label: 'CRITICAL', val: summary.critical_failures,   color: C.red },
+314: 5 | { label: 'HIGH',     val: summary.high_failures,       color: C.orange },
+315: 5 | { label: 'ACCOUNTS', val: summary.total_accounts,      color: C.cyan },
+316: 5 | ].map(chip => (
+317: 6 | <div key={chip.label} style={{
+318: 6 | border: `1px solid ${chip.color}44`, padding: '3px 11px',
+319: 6 | background: `${chip.color}0d`, fontSize: 10, ...mono
+320: 6 | }}>
+321: 6 | <span style={{ color: C.dim }}>{chip.label}: </span>
+322: 6 | <span style={{ color: chip.color, fontWeight: 800 }}>{chip.val}</span>
+323: 5 | </div>
+324: 5 | ))}
+325: 5 | <button onClick={triggerScan} disabled={scanning} style={{
+326: 5 | background: 'none', border: `1px solid ${C.purple}`,
+327: 5 | color: C.purple, padding: '4px 14px',
+328: 5 | fontSize: 10, ...mono, fontWeight: 800, cursor: 'pointer'
+329: 5 | }}>
+330: 5 | {scanning ? '> SCANNING...' : '> TRIGGER_SCAN'}
+331: 5 | </button>
+332: 4 | </div>
+333: 3 | </div>
+334: 3 | 
+335: 3 | {/* ── i3 tiled grid ───────────────────────────────────────────────────── */}
+336: 4 | <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) 370px', gridAutoRows: 'max-content', gap: 12 }}>
+337: 4 | 
+338: 4 | {/* [1,1] system_info */}
+339: 5 | <div style={{ gridColumn: 1, gridRow: 1 }}>
+340: 5 | <TerminalWindow title="system_info.sh" accent={C.purple} style={{ height: '100%' }}>
+341: 6 | <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+342: 6 | <pre style={{ fontSize: 7, color: C.purple, lineHeight: 1.18, margin: 0, flexShrink: 0, opacity: 0.85, ...mono }}>
+343: 6 | {`                              __
+344: 6 | .d$$b
+345: 6 | .' TO$;\\
+346: 6 | /  : TP._;
+347: 6 | / _.;  :Tb|
+348: 6 | /   /   ;j$j
+349: 6 | _.-"       d$$$$
+350: 6 | .' ..       d$$$$;
+351: 6 | /  /P'      d$$$$P. |\\
+352: 6 | /   "      .d$$$P' |\\^"l
+353: 6 | .'           \`T$P^"""""  :
+354: 6 | ._.'      _.'                ;
+355: 6 | \`-.-".-'-' ._.       _.-"    .-"
+356: 6 | \`.-" _____  ._              .-"
+357: 6 | -(.g$$$$$$$b.              .'
+358: 6 | ""^^T$$$P^)            .(:
+359: 6 | _/  -"  /.'         /:/;
+360: 6 | ._.'-'\`-'  ")/         /;/;
+361: 6 | \`-.-"..--""   " /         /  ;
+362: 6 | .-" ..--""        -'          :
+363: 6 | ..--""--.-"         (\\      .-(\\
+364: 6 | ..--""              \`-\\(\\/;\`
+365: 6 | _.                      :
+366: 6 | ;\`-
+367: 6 | :\\
+368: 6 | ;  bug`}
+369: 6 | </pre>
+370: 7 | <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+371: 8 | <div style={{ color: C.cyan, fontWeight: 800, fontSize: 11, ...mono, marginBottom: 5 }}>
+372: 8 | admin@compliance-os
+373: 7 | </div>
+374: 7 | <div style={{ color: C.dim, fontSize: 9, ...mono, marginBottom: 6 }}>{'─'.repeat(19)}</div>
+375: 7 | <InfoRow label="OS:"       value="ComplianceOS v1.0" />
+376: 7 | <InfoRow label="Kernel:"   value="5.15.0-Compliance" />
+377: 7 | <InfoRow label="Uptime:"   value="1337 mins" />
+378: 7 | <InfoRow label="Shell:"    value="zsh 5.8" />
+379: 7 | <InfoRow label="Score:"    value={`${summary.overall_score}%`}           vc={scoreColor(summary.overall_score)} />
+380: 7 | <InfoRow label="Accounts:" value={`${summary.total_accounts} connected`} vc={C.cyan} />
+381: 7 | <InfoRow label="Critical:" value={`${summary.critical_failures} issues`} vc={C.red} />
+382: 7 | <InfoRow label="High:"     value={`${summary.high_failures} issues`}     vc={C.orange} />
+383: 8 | <div style={{ marginTop: 10, display: 'flex', gap: 3 }}>
+384: 8 | {[C.red, C.orange, C.yellow, C.green, C.cyan, C.blue, C.purple, C.purpleDim].map((c, i) => (
+385: 9 | <div key={i} style={{ width: 11, height: 11, background: c, boxShadow: `0 0 5px ${c}77` }} />
+386: 9 | ))}
+387: 8 | </div>
+388: 7 | </div>
+389: 6 | </div>
+390: 6 | </TerminalWindow>
+391: 5 | </div>
+392: 5 | 
+393: 5 | {/* [2,1] trend chart */}
+394: 6 | <div style={{ gridColumn: 1, gridRow: 2, display: 'flex', flexDirection: 'column' }}>
+395: 6 | <TerminalWindow title="security_trend.log" accent={C.blue} style={{ flex: 1 }}>
+396: 7 | <div style={{ fontSize: 10, color: C.dim, ...mono, marginBottom: 14 }}>
+397: 7 | compliance score — last 12 scans
+398: 6 | </div>
+399: 6 | <ResponsiveContainer width="100%" height={280}>
+400: 6 | <AreaChart data={trend} margin={{ top: 4, right: 6, bottom: 0, left: -20 }}>
+401: 6 | <defs>
+402: 6 | <linearGradient id="gradScore" x1="0" y1="0" x2="0" y2="1">
+403: 6 | <stop offset="5%"  stopColor={C.purple} stopOpacity={0.5} />
+404: 6 | <stop offset="95%" stopColor={C.purple} stopOpacity={0} />
+405: 6 | </linearGradient>
+406: 6 | </defs>
+407: 6 | <CartesianGrid strokeDasharray="2 6" vertical={false} stroke="rgba(255,255,255,0.04)" />
+408: 6 | <XAxis dataKey="date" axisLine={false} tickLine={false}
+409: 6 | tick={{ fill: C.dim, fontSize: 9, fontFamily: 'var(--font-mono)' }} />
+410: 6 | <YAxis domain={[0, 100]} axisLine={false} tickLine={false}
+411: 6 | tick={{ fill: C.dim, fontSize: 9, fontFamily: 'var(--font-mono)' }} />
+412: 6 | <Tooltip content={<CustomTooltip />} />
+413: 6 | <Area type="monotone" dataKey="score" stroke={C.purple}
+414: 6 | strokeWidth={2} fillOpacity={1} fill="url(#gradScore)" />
+415: 6 | </AreaChart>
+416: 6 | </ResponsiveContainer>
+417: 6 | 
+418: 6 | {/* clickable severity legend */}
+419: 7 | <div style={{ display: 'flex', gap: 18, marginTop: 16, flexWrap: 'wrap' }}>
+420: 7 | {sevDist.map(s => (
+421: 8 | <div key={s.name}
+422: 8 | onClick={() => setSevFilter(sevFilter === s.name.toLowerCase() ? null : s.name.toLowerCase())}
+423: 8 | style={{
+424: 8 | display: 'flex', alignItems: 'center', gap: 6,
+425: 8 | fontSize: 10, ...mono, cursor: 'pointer',
+426: 8 | opacity: sevFilter && sevFilter !== s.name.toLowerCase() ? 0.28 : 1,
+427: 8 | transition: 'opacity 0.2s'
+428: 8 | }}>
+429: 9 | <div style={{ width: 8, height: 8, background: s.color, boxShadow: `0 0 6px ${s.color}` }} />
+430: 9 | <span style={{ color: s.color }}>{s.name}</span>
+431: 9 | <span style={{ color: C.dim }}>({s.val})</span>
+432: 8 | </div>
+433: 8 | ))}
+434: 7 | </div>
+435: 7 | </TerminalWindow>
+436: 6 | </div>
+437: 6 | 
+438: 6 | {/* CENTRE: policy engine table (spans 2 rows) */}
+439: 7 | <div style={{ gridColumn: 2, gridRow: '1 / span 2', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+440: 7 | <TerminalWindow title="policy_engine_output.txt" accent={C.purple} style={{ flex: 1 }} contentStyle={{ display: 'flex', flexDirection: 'column' }}>
+441: 8 | <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+442: 8 | {['All', ...FRAMEWORKS].map(f => (
+443: 8 | <FilterButton key={f}
+444: 8 | label={(FW_NAMES[f] || f).toUpperCase()}
+445: 8 | color={C.purple}
+446: 8 | active={fwFilter === f}
+447: 8 | onClick={() => setFwFilter(f)} />
+448: 8 | ))}
+449: 7 | </div>
+450: 7 | 
+451: 8 | <div style={{ overflowY: 'auto', maxHeight: 520 }}>
+452: 8 | <table style={{ width: '100%', fontSize: 10, borderCollapse: 'collapse', ...mono }}>
+453: 8 | <thead style={{ position: 'sticky', top: 0, background: 'rgba(13,10,28,0.97)', zIndex: 1 }}>
+454: 8 | <tr style={{ textAlign: 'left', borderBottom: `1px solid ${C.blue}44` }}>
+455: 8 | {['POLICY', 'FRAMEWORK', 'STATUS', 'SEV'].map(h => (
+456: 8 | <th key={h} style={{ padding: '7px 6px', color: C.cyan, fontWeight: 700, letterSpacing: '0.05em' }}>{h}</th>
+457: 8 | ))}
+458: 8 | </tr>
+459: 8 | </thead>
+460: 8 | <tbody>
+461: 8 | {filteredChecks.map((c, i) => (
+462: 8 | <tr key={c.id} style={{
+463: 8 | borderBottom: '1px solid rgba(255,255,255,0.03)',
+464: 8 | background: i % 2 === 0 ? 'rgba(255,255,255,0.012)' : 'transparent'
+465: 8 | }}>
+466: 8 | <td style={{ padding: '6px 6px', maxWidth: 170, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: C.text }}>
+467: 8 | {c.policy_name}
+468: 8 | </td>
+469: 8 | <td style={{ padding: '6px 6px', color: C.cyan, whiteSpace: 'nowrap' }}>{c.framework.toUpperCase()}</td>
+470: 8 | <td style={{ padding: '6px 6px', fontWeight: 800, whiteSpace: 'nowrap',
+471: 8 | color: c.status === 'pass' ? C.green : C.red }}>
+472: 8 | [{c.status.toUpperCase()}]
+473: 8 | </td>
+474: 8 | <td style={{ padding: '6px 6px', whiteSpace: 'nowrap',
+475: 8 | color: c.severity === 'critical' ? C.red : c.severity === 'high' ? C.orange : c.severity === 'medium' ? C.cyan : C.dim }}>
+476: 8 | {c.severity.toUpperCase()}
+477: 8 | </td>
+478: 8 | </tr>
+479: 8 | ))}
+480: 8 | {filteredChecks.length === 0 && (
+481: 8 | <tr><td colSpan={4} style={{ padding: 28, textAlign: 'center', color: C.dim }}>~ no results ~</td></tr>
+482: 8 | )}
+483: 8 | </tbody>
+484: 8 | </table>
+485: 7 | </div>
+486: 7 | 
+487: 8 | <div style={{ marginTop: 8, borderTop: `1px solid rgba(255,255,255,0.05)`, paddingTop: 6, fontSize: 9, color: C.dim, ...mono }}>
+488: 8 | {filteredChecks.length} checks &nbsp;|&nbsp; {filteredChecks.filter(c => c.status === 'fail').length} failing
+489: 7 | </div>
+490: 7 | </TerminalWindow>
+491: 6 | </div>
+492: 6 | 
+493: 6 | {/* [1,3] severity donut + table combined */}
+494: 7 | <div style={{ gridColumn: 3, gridRow: 1 }}>
+495: 7 | 
+496: 7 | {/* [1] severity donut + table combined */}
+497: 7 | <TerminalWindow title="severity_dist.viz" accent={C.red}>
+498: 8 | <div style={{ fontSize: 9, color: C.dim, ...mono, marginBottom: 10 }}>
+499: 8 | $ vizualize --severity --interactive
+500: 7 | </div>
+501: 7 | 
+502: 7 | <SeverityDonut
+503: 7 | data={sevDist}
+504: 7 | activeIdx={sevDist.findIndex(s => s.name.toLowerCase() === sevFilter)}
+505: 7 | onHover={idx => idx !== null && setSevFilter(sevDist[idx]?.name.toLowerCase())}
+506: 7 | onClick={idx => {
+507: 7 | const name = sevDist[idx]?.name.toLowerCase()
+508: 7 | setSevFilter(prev => prev === name ? null : name)
+509: 7 | }}
+510: 7 | />
+511: 7 | 
+512: 8 | <div style={{ marginTop: 14, borderTop: `1px solid ${C.red}22`, paddingTop: 10 }}>
+513: 8 | <table style={{ width: '100%', fontSize: 10, borderCollapse: 'collapse', ...mono }}>
+514: 8 | <thead>
+515: 8 | <tr style={{ borderBottom: `1px solid ${C.red}33` }}>
+516: 8 | {['SEVERITY', 'COUNT', '%'].map(h => (
+517: 8 | <th key={h} style={{ padding: '4px 6px', color: C.cyan, textAlign: h === 'SEVERITY' ? 'left' : 'right', fontWeight: 700 }}>{h}</th>
+518: 8 | ))}
+519: 8 | </tr>
+520: 8 | </thead>
+521: 8 | <tbody>
+522: 8 | {sevDist.map((s, i) => {
+523: 8 | const total = sevDist.reduce((a, b) => a + b.val, 0) || 1
+524: 8 | const active = sevFilter === s.name.toLowerCase()
+525: 8 | return (
+526: 8 | <tr key={s.name}
+527: 8 | onClick={() => setSevFilter(active ? null : s.name.toLowerCase())}
+528: 8 | style={{
+529: 8 | cursor: 'pointer',
+530: 8 | borderBottom: '1px solid rgba(255,255,255,0.03)',
+531: 8 | background: active ? `${s.color}1a` : i % 2 === 0 ? 'rgba(255,255,255,0.01)' : 'transparent',
+532: 8 | transition: 'background 0.2s'
+533: 8 | }}>
+534: 8 | <td style={{ padding: '5px 6px', color: s.color, fontWeight: 800 }}>{s.name}</td>
+535: 8 | <td style={{ padding: '5px 6px', color: C.text, textAlign: 'right' }}>{s.val}</td>
+536: 8 | <td style={{ padding: '5px 6px', color: C.dim, textAlign: 'right' }}>
+537: 8 | {((s.val / total) * 100).toFixed(1)}
+538: 8 | </td>
+539: 8 | </tr>
+540: 8 | )
+541: 8 | })}
+542: 8 | </tbody>
+543: 8 | </table>
+544: 7 | </div>
+545: 7 | 
+546: 7 | {sevFilter && (
+547: 8 | <div style={{ marginTop: 8, fontSize: 9, color: C.yellow, ...mono }}>
+548: 8 | [ FILTER: {sevFilter.toUpperCase()} ] — click segment or row to clear
+549: 7 | </div>
+550: 7 | )}
+551: 7 | </TerminalWindow>
+552: 6 | </div>
+553: 6 | 
+554: 6 | {/* [2,3] htop-style compliance bars */}
+555: 7 | <div style={{ gridColumn: 3, gridRow: 2, display: 'flex', flexDirection: 'column' }}>
+556: 7 | <TerminalWindow title="compliance_scores.htop" accent={C.cyan} style={{ flex: 1 }}>
+557: 8 | <div style={{ fontSize: 9, color: C.dim, ...mono, marginBottom: 12 }}>
+558: 8 | $ compliance --watch --frameworks all
+559: 7 | </div>
+560: 7 | {scores.map(s => (
+561: 7 | <HBar key={s.name} label={s.name}
+562: 7 | pct={s.hasData ? s.score : 0}
+563: 7 | color={s.hasData ? scoreColor(s.score) : 'rgba(255,255,255,0.12)'} />
+564: 7 | ))}
+565: 7 | </TerminalWindow>
+566: 6 | </div>
+567: 6 | 
+568: 5 | </div>
+569: 5 | 
+570: 5 | {/* ── Violations + DSPM row ──────────────────────────────────────────────── */}
+571: 6 | <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12, alignItems: 'start' }}>
+572: 6 | 
+573: 6 | {/* violations_engine.log */}
+574: 6 | <TerminalWindow title="violations_engine.log" accent={C.red}>
+575: 7 | <div style={{ fontSize: 9, color: C.dim, ...mono, marginBottom: 10 }}>
+576: 7 | $ rule-engine --check all-resources --provider aws,azure,gcp
+577: 6 | </div>
+578: 6 | 
+579: 6 | {/* summary pills */}
+580: 6 | {violSummary && (
+581: 7 | <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+582: 7 | {[
+583: 7 | { label: 'OPEN',     val: violSummary.open,     color: C.text },
+584: 7 | { label: 'CRITICAL', val: violSummary.critical, color: C.red },
+585: 7 | { label: 'HIGH',     val: violSummary.high,     color: C.orange },
+586: 7 | { label: 'MEDIUM',   val: violSummary.medium,   color: C.cyan },
+587: 7 | ].map(p => {
+588: 7 | const isActive = p.label === 'OPEN' ? !violSevFilter : violSevFilter === p.label.toLowerCase()
+589: 7 | return (
+590: 7 | <FilterButton key={p.label}
+591: 7 | label={p.label}
+592: 7 | count={p.val}
+593: 7 | color={p.color}
+594: 7 | active={isActive}
+595: 7 | onClick={() => setViolSevFilter(prev =>
+596: 7 | p.label === 'OPEN' ? null : prev === p.label.toLowerCase() ? null : p.label.toLowerCase()
+597: 7 | )}
+598: 7 | />
+599: 7 | )
+600: 7 | })}
+601: 8 | <div style={{ marginLeft: 'auto', fontSize: 9, color: C.dim, ...mono, alignSelf: 'center' }}>
+602: 8 | TOTAL {violSummary.total ?? 0}
+603: 7 | </div>
+604: 6 | </div>
+605: 6 | )}
+606: 6 | 
+607: 6 | {/* violations table */}
+608: 7 | <div style={{ overflowY: 'auto', maxHeight: 260 }}>
+609: 7 | <table style={{ width: '100%', fontSize: 10, borderCollapse: 'collapse', ...mono }}>
+610: 7 | <thead style={{ position: 'sticky', top: 0, background: 'rgba(13,10,28,0.97)', zIndex: 1 }}>
+611: 7 | <tr style={{ borderBottom: `1px solid ${C.red}44` }}>
+612: 7 | {['RULE', 'RESOURCE', 'PROVIDER', 'SEV', 'STATUS'].map(h => (
+613: 7 | <th key={h} style={{ padding: '5px 6px', color: C.cyan, fontWeight: 700, textAlign: 'left' }}>{h}</th>
+614: 7 | ))}
+615: 7 | </tr>
+616: 7 | </thead>
+617: 7 | <tbody>
+618: 7 | {violations
+619: 7 | .filter(v => !violSevFilter || v.severity === violSevFilter)
+620: 7 | .map((v, i) => (
+621: 7 | <tr key={v.id} style={{
+622: 7 | borderBottom: '1px solid rgba(255,255,255,0.03)',
+623: 7 | background: i % 2 === 0 ? 'rgba(255,255,255,0.012)' : 'transparent'
+624: 7 | }}>
+625: 7 | <td style={{ padding: '5px 6px', color: C.purple, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.rule_id}</td>
+626: 7 | <td style={{ padding: '5px 6px', color: C.text,   maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.resource_id}</td>
+627: 7 | <td style={{ padding: '5px 6px', color: C.dim,   whiteSpace: 'nowrap', fontSize: 9 }}>{v.cloud_provider.toUpperCase()}</td>
+628: 7 | <td style={{ padding: '5px 6px', fontWeight: 800, whiteSpace: 'nowrap',
+629: 7 | color: v.severity === 'critical' ? C.red : v.severity === 'high' ? C.orange : v.severity === 'medium' ? C.cyan : C.dim }}>
+630: 7 | {v.severity.toUpperCase()}
+631: 7 | </td>
+632: 7 | <td style={{ padding: '5px 6px', whiteSpace: 'nowrap',
+633: 7 | color: v.status === 'open' ? C.red : C.green, fontSize: 9 }}>
+634: 7 | [{v.status.toUpperCase()}]
+635: 7 | </td>
+636: 7 | </tr>
+637: 7 | ))}
+638: 7 | {violations.filter(v => !violSevFilter || v.severity === violSevFilter).length === 0 && (
+639: 7 | <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center', color: C.dim }}>~ no violations ~</td></tr>
+640: 7 | )}
+641: 7 | </tbody>
+642: 7 | </table>
+643: 6 | </div>
+644: 6 | 
+645: 6 | {/* category breakdown footer */}
+646: 6 | {violSummary?.by_category && (
+647: 7 | <div style={{ marginTop: 10, borderTop: `1px solid rgba(255,255,255,0.05)`, paddingTop: 8,
+648: 7 | display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 9, ...mono }}>
+649: 7 | {Object.entries(violSummary.by_category).map(([cat, cnt]) => (
+650: 7 | <span key={cat} style={{ color: C.dim }}>
+651: 7 | <span style={{ color: C.cyan }}>{cat}</span>:{cnt}
+652: 7 | </span>
+653: 7 | ))}
+654: 6 | </div>
+655: 6 | )}
+656: 6 | </TerminalWindow>
+657: 6 | 
+658: 6 | {/* dspm_scanner.log */}
+659: 6 | <TerminalWindow title="dspm_scanner.log" accent={C.blue}>
+660: 7 | <div style={{ fontSize: 9, color: C.dim, ...mono, marginBottom: 10 }}>
+661: 7 | $ dspm --classify --risk-score --analyze-access
+662: 6 | </div>
+663: 6 | 
+664: 6 | {/* DSPM summary pills */}
+665: 6 | {dspmSummary && (
+666: 7 | <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+667: 7 | {[
+668: 7 | { label: 'STORES',   val: dspmSummary.total_stores,      color: C.text },
+669: 7 | { label: 'AT RISK',  val: dspmSummary.at_risk,           color: C.red },
+670: 7 | { label: 'PUBLIC',   val: dspmSummary.public_stores,     color: C.orange },
+671: 7 | { label: 'AVG RISK', val: `${dspmSummary.avg_risk_score}`, color: C.cyan },
+672: 7 | ].map(p => (
+673: 8 | <div key={p.label} style={{
+674: 8 | border: `1px solid ${p.color}55`, padding: '3px 9px',
+675: 8 | fontSize: 9, ...mono, color: p.color, display: 'flex', gap: 6, alignItems: 'center', fontWeight: 700
+676: 8 | }}>
+677: 8 | {p.label} <span style={{ fontWeight: 900 }}>{p.val ?? 0}</span>
+678: 7 | </div>
+679: 7 | ))}
+680: 6 | </div>
+681: 6 | )}
+682: 6 | 
+683: 6 | {/* risk_level filter pills */}
+684: 7 | <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+685: 7 | {[null, 'critical', 'high', 'medium', 'low'].map(lvl => {
+686: 7 | const color = lvl === 'critical' ? C.red : lvl === 'high' ? C.orange : lvl === 'medium' ? C.cyan : lvl === 'low' ? C.green : C.dim
+687: 7 | return (
+688: 7 | <FilterButton key={lvl ?? 'all'}
+689: 7 | label={lvl ? lvl.toUpperCase() : 'ALL'}
+690: 7 | color={color}
+691: 7 | active={dspmFilter === lvl}
+692: 7 | onClick={() => setDspmFilter(lvl)}
+693: 7 | />
+694: 7 | )
+695: 7 | })}
+696: 6 | </div>
+697: 6 | 
+698: 6 | {/* DSPM findings table */}
+699: 7 | <div style={{ overflowY: 'auto', maxHeight: 200 }}>
+700: 7 | <table style={{ width: '100%', fontSize: 10, borderCollapse: 'collapse', ...mono }}>
+701: 7 | <thead style={{ position: 'sticky', top: 0, background: 'rgba(13,10,28,0.97)', zIndex: 1 }}>
+702: 7 | <tr style={{ borderBottom: `1px solid ${C.blue}44` }}>
+703: 7 | {['DATA STORE', 'CLASS', 'RISK', 'ACCESS', 'ENC'].map(h => (
+704: 7 | <th key={h} style={{ padding: '5px 6px', color: C.cyan, fontWeight: 700, textAlign: 'left' }}>{h}</th>
+705: 7 | ))}
+706: 7 | </tr>
+707: 7 | </thead>
+708: 7 | <tbody>
+709: 7 | {dspmFindings
+710: 7 | .filter(f => !dspmFilter || f.risk_level === dspmFilter)
+711: 7 | .map((f, i) => {
+712: 7 | const riskColor = f.risk_level === 'critical' ? C.red : f.risk_level === 'high' ? C.orange : f.risk_level === 'medium' ? C.cyan : C.green
+713: 7 | const hasCorr = correlations.some(c => c.dspm_finding?.id === f.id)
+714: 7 | return (
+715: 7 | <tr key={f.id} style={{
+716: 7 | borderBottom: '1px solid rgba(255,255,255,0.03)',
+717: 7 | background: hasCorr ? 'rgba(255,85,85,0.07)' : i % 2 === 0 ? 'rgba(255,255,255,0.012)' : 'transparent'
+718: 7 | }}>
+719: 7 | <td style={{ padding: '5px 6px', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+720: 7 | <span style={{ color: hasCorr ? C.red : C.text }}>
+721: 7 | {hasCorr ? '⚠ ' : ''}{f.data_store_id}
+722: 7 | </span>
+723: 7 | </td>
+724: 7 | <td style={{ padding: '5px 6px', color: C.purple, fontSize: 9, whiteSpace: 'nowrap' }}>
+725: 7 | {(f.classifications || []).join('/')}
+726: 7 | </td>
+727: 7 | <td style={{ padding: '5px 6px', whiteSpace: 'nowrap' }}>
+728: 7 | <span style={{ color: riskColor, fontWeight: 800 }}>{f.risk_level?.toUpperCase()}</span>
+729: 7 | <span style={{ color: C.dim, fontSize: 9 }}> {f.risk_score}</span>
+730: 7 | </td>
+731: 7 | <td style={{ padding: '5px 6px', fontSize: 9, color: f.public_access ? C.red : C.green }}>
+732: 7 | {f.public_access ? 'PUBLIC' : 'PRIVATE'}
+733: 7 | </td>
+734: 7 | <td style={{ padding: '5px 6px', fontSize: 9,
+735: 7 | color: f.encryption_status === 'encrypted' ? C.green : f.encryption_status === 'partial' ? C.yellow : C.red }}>
+736: 7 | {f.encryption_status?.toUpperCase()}
+737: 7 | </td>
+738: 7 | </tr>
+739: 7 | )
+740: 7 | })}
+741: 7 | {dspmFindings.filter(f => !dspmFilter || f.risk_level === dspmFilter).length === 0 && (
+742: 7 | <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center', color: C.dim }}>~ no findings ~</td></tr>
+743: 7 | )}
+744: 7 | </tbody>
+745: 7 | </table>
+746: 6 | </div>
+747: 6 | 
+748: 6 | {/* correlations highlight */}
+749: 6 | {correlations.length > 0 && (
+750: 7 | <div style={{ marginTop: 10, borderTop: `1px solid ${C.red}33`, paddingTop: 8 }}>
+751: 8 | <div style={{ fontSize: 9, color: C.red, ...mono, marginBottom: 6, fontWeight: 800 }}>
+752: 8 | ⚠ HIGH-RISK CORRELATIONS [{correlations.length}]
+753: 7 | </div>
+754: 8 | <div style={{ overflowY: 'auto', maxHeight: 120 }}>
+755: 8 | {correlations.map(c => (
+756: 9 | <div key={c.id} style={{
+757: 9 | fontSize: 9, ...mono, padding: '3px 0',
+758: 9 | borderBottom: '1px solid rgba(255,85,85,0.1)', color: C.dim
+759: 9 | }}>
+760: 9 | <span style={{ color: c.combined_risk === 'critical' ? C.red : C.orange, fontWeight: 800 }}>
+761: 9 | [{c.combined_risk?.toUpperCase()}]
+762: 9 | </span>{' '}
+763: 9 | <span style={{ color: C.text }}>{c.violation?.rule_id}</span>
+764: 9 | {' → '}
+765: 9 | <span style={{ color: C.purple }}>{c.dspm_finding?.name}</span>
+766: 9 | {' '}
+767: 9 | <span style={{ color: C.dim }}>[{(c.dspm_finding?.classifications || []).join('/')}]</span>
+768: 8 | </div>
+769: 8 | ))}
+770: 7 | </div>
+771: 6 | </div>
+772: 6 | )}
+773: 6 | </TerminalWindow>
+774: 6 | 
+775: 5 | </div>
+776: 4 | </div>
+777: 4 | )
+778: 4 | }
+779: 4 | 

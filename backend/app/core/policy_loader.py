@@ -66,15 +66,18 @@ class PolicyLoader:
         """Return policies for a given framework and resource type."""
         if not self._cache:
             self.load_all()
-        # Get specific + wildcard policies, deduplicate by policy ID
-        specific_key = f"{framework}:{resource_type}"
+            
+        frameworks_to_check = self.get_frameworks() if framework == "all" or framework == "All" else [framework]
+        
         seen_ids: set[str] = set()
         results = []
-        for policy in self._cache.get(specific_key, []):
-            pid = policy.get("id", "")
-            if pid not in seen_ids:
-                seen_ids.add(pid)
-                results.append(policy)
+        for fw in frameworks_to_check:
+            specific_key = f"{fw}:{resource_type}"
+            for policy in self._cache.get(specific_key, []):
+                pid = policy.get("id", "")
+                if pid not in seen_ids:
+                    seen_ids.add(pid)
+                    results.append(policy)
         return results
 
     def get_frameworks(self) -> list[str]:

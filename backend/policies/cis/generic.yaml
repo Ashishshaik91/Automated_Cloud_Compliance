@@ -1,0 +1,37 @@
+name: "CIS Benchmarks"
+policies:
+  - id: cis-root-mfa
+    name: "Avoid Root usage & ensure MFA"
+    resource_type: "IAM Root"
+    opa_package: "compliance.cis.iam_root"
+    severity: "critical"
+    rules:
+      - field: "mfa_enabled"
+        operator: "is_true"
+
+  - id: cis-iam-password
+    name: "Strong Password Policy"
+    resource_type: "IAM Policy"
+    opa_package: "compliance.cis.iam_policy"
+    severity: "high"
+    rules:
+      - field: "strong_password"
+        operator: "is_true"
+
+  - id: cis-sg-ssh-open
+    name: "No Open SSH to 0.0.0.0/0"
+    resource_type: "Security Group"
+    opa_package: "compliance.cis.sg"
+    severity: "critical"
+    rules:
+      - field: "ssh_open"
+        operator: "is_false"
+
+  - id: cis-storage-encryption
+    name: "Storage Account Encrypted"
+    resource_type: "Storage Blob"
+    opa_package: "compliance.cis.storage"
+    severity: "high"
+    rules:
+      - field: "is_encrypted"
+        operator: "is_true"

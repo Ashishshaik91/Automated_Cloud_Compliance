@@ -6,8 +6,8 @@ import rego.v1
 default allow := false
 
 allow if {
-    input.resource.multi_az == true
     input.resource.publicly_accessible == false
+    input.resource.multi_az == true
 }
 
 deny contains reason if {

@@ -5,9 +5,9 @@ User SQLAlchemy model.
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Integer, String, select
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.auth.jwt import hash_password
 from app.models.database import Base
@@ -21,8 +21,11 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
-    role: Mapped[str] = mapped_column(String(50), default="analyst", nullable=False)
+    role: Mapped[str] = mapped_column(String(50), default="dev", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    organization_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -30,6 +33,11 @@ class User(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    # Account-level role assignments (may be time-limited)
+    account_roles: Mapped[list] = relationship(
+        "UserAccountRole", foreign_keys="UserAccountRole.user_id", lazy="select"
     )
 
     @classmethod
@@ -45,12 +53,12 @@ class User(Base):
         return result.scalar_one_or_none()
 
     @classmethod
-    async def create(cls, db: AsyncSession, user_in: "UserCreate") -> "User":
+    async def create(cls, db: AsyncSession, user_in: "UserCreate", role: str = "dev") -> "User":
         user = cls(
             email=user_in.email.lower().strip(),
             full_name=user_in.full_name,
             hashed_password=hash_password(user_in.password),
-            role="analyst",
+            role=role,
         )
         db.add(user)
         await db.flush()

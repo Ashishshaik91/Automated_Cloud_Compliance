@@ -5,6 +5,7 @@ Generates audit-ready PDF and HTML compliance reports.
 
 import io
 import json
+import csv
 from datetime import datetime, timezone
 from typing import Annotated
 
@@ -12,6 +13,12 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response, StreamingResponse
 from jinja2 import Environment, PackageLoader, select_autoescape
+
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter, landscape
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -110,7 +117,7 @@ async def generate_report(
         report_id=report_id,
         scan_id=body.scan_id,
         format=body.format,
-        download_url=f"/api/v1/reports/{report_id}/download",
+        download_url=f"/reports/{report_id}/download?fmt={body.format}",
         generated_at=datetime.now(timezone.utc),
     )
 
@@ -133,6 +140,98 @@ async def download_report(
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
 
+    if fmt == "csv":
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["Policy ID", "Policy Name", "Resource", "Severity", "Status", "Remediation"])
+        for check in scan.checks:
+            writer.writerow([
+                check.policy_id, 
+                check.policy_name, 
+                check.resource_id or "N/A", 
+                check.severity.upper(), 
+                check.status.upper(), 
+                check.remediation_hint or "-"
+            ])
+        output.seek(0)
+        return StreamingResponse(
+            io.BytesIO(output.getvalue().encode("utf-8")),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="compliance_report_{scan_id}.csv"'},
+        )
+        
+    if fmt == "pdf":
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buffer, 
+            pagesize=landscape(letter),
+            leftMargin=36,
+            rightMargin=36,
+            topMargin=36,
+            bottomMargin=36
+        )
+        elements = []
+        styles = getSampleStyleSheet()
+        
+        elements.append(Paragraph(f"Compliance Report - {scan.framework.upper()}", styles['Title']))
+        elements.append(Paragraph(f"Account ID: {scan.account_id} | Scan Date: {scan.started_at}", styles['Normal']))
+        elements.append(Paragraph(f"Compliance Score: {scan.compliance_score}% | Total Checks: {scan.total_checks} | Passed: {scan.passed_checks} | Failed: {scan.failed_checks}", styles['Normal']))
+        elements.append(Spacer(1, 12))
+        
+        import textwrap
+        
+        def cell(text, width_chars):
+            if not text:
+                return "-"
+            return textwrap.fill(str(text), width=width_chars, break_long_words=True, break_on_hyphens=True)
+            
+        data = [["Policy ID", "Policy Name", "Resource", "Severity", "Status", "Remediation"]]
+        row_colors = []
+        for check in scan.checks:
+            data.append([
+                cell(check.policy_id, 20),
+                cell(check.policy_name, 35),
+                cell(check.resource_id or 'N/A', 30),
+                str(check.severity).upper(),
+                str(check.status).upper(),
+                cell(check.remediation_hint or '-', 48)
+            ])
+            if str(check.status).upper() == "FAIL":
+                row_colors.append(colors.HexColor('#fef2f2')) # Light red for fail
+            else:
+                row_colors.append(colors.HexColor('#f0fdf4')) # Light green for pass
+                
+        t = Table(data, colWidths=[90, 160, 140, 60, 50, 220])
+        
+        style_cmds = [
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a3a5c')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('LINEBELOW', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+        ]
+        
+        for i, color in enumerate(row_colors, start=1):
+            style_cmds.append(('BACKGROUND', (0, i), (-1, i), color))
+            
+        t.setStyle(TableStyle(style_cmds))
+        
+        elements.append(t)
+        doc.build(elements)
+        buffer.seek(0)
+        return StreamingResponse(
+            buffer,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="compliance_report_{scan_id}.pdf"'},
+        )
+
+    # Fallback to default HTML
     from jinja2 import Template
     template = Template(REPORT_TEMPLATE)
     html_content = template.render(

@@ -1,0 +1,37 @@
+name: "OWASP Top 10"
+policies:
+  - id: owasp-waf-enabled
+    name: "WAF Enabled for APIs (A1:2021)"
+    resource_type: "API Gateway"
+    opa_package: "compliance.owasp.api_gateway"
+    severity: "critical"
+    rules:
+      - field: "waf_enabled"
+        operator: "is_true"
+
+  - id: owasp-tls-version
+    name: "TLS 1.2+ Only (A2:2021)"
+    resource_type: "Load Balancer"
+    opa_package: "compliance.owasp.lb"
+    severity: "high"
+    rules:
+      - field: "tls_1_2_plus"
+        operator: "is_true"
+
+  - id: owasp-cors-strict
+    name: "Restrictive CORS (A5:2021)"
+    resource_type: "API Gateway"
+    opa_package: "compliance.owasp.api_gateway_cors"
+    severity: "medium"
+    rules:
+      - field: "cors_restrictive"
+        operator: "is_true"
+
+  - id: owasp-log-injection
+    name: "Log Integrity Monitoring (A9:2021)"
+    resource_type: "CloudTrail"
+    opa_package: "compliance.owasp.cloudtrail"
+    severity: "high"
+    rules:
+      - field: "log_integrity_monitoring"
+        operator: "is_true"

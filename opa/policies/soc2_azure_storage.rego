@@ -6,9 +6,9 @@ import rego.v1
 default allow := false
 
 allow if {
-    input.resource.encryption_enabled == true
-    input.resource.allow_blob_public_access == false
     input.resource.https_only == true
+    input.resource.allow_blob_public_access == false
+    input.resource.encryption_enabled == true
 }
 
 deny contains reason if {
