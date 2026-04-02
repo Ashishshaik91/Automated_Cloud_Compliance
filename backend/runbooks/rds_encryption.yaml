@@ -1,0 +1,36 @@
+rule_id: rds_encryption
+title: Enable RDS Instance Encryption at Rest
+severity: critical
+automated: false
+framework_version: "PCI-DSS v4.0 / HIPAA"
+last_verified: "2026-01"
+manual_steps:
+  - "RDS encryption cannot be enabled on running instances. A recreation is required."
+  - "Create a manual snapshot of the existing DB instance."
+  - "Copy the snapshot and enable encryption during the copy."
+  - "Restore the encrypted snapshot to a new DB instance."
+  - "Update application connection strings to point to the new instance."
+  - "Once validated, delete the old unencrypted instance."
+aws_cli_command: |
+  # Step 1: Create snapshot
+  aws rds create-db-snapshot \
+    --db-instance-identifier {resource_id} \
+    --db-snapshot-identifier {resource_id}-pre-encrypt-snapshot
+
+  # Step 2: Copy snapshot with encryption
+  aws rds copy-db-snapshot \
+    --source-db-snapshot-identifier {resource_id}-pre-encrypt-snapshot \
+    --target-db-snapshot-identifier {resource_id}-encrypted-snapshot \
+    --kms-key-id alias/aws/rds
+
+  # Step 3: Restore from encrypted snapshot (edit --db-instance-identifier as needed)
+  aws rds restore-db-instance-from-db-snapshot \
+    --db-instance-identifier {resource_id}-encrypted \
+    --db-snapshot-identifier {resource_id}-encrypted-snapshot
+rollback_command: |
+  # Rollback: restore from original pre-encrypt-snapshot
+  aws rds restore-db-instance-from-db-snapshot \
+    --db-instance-identifier {resource_id}-unencrypted-restore \
+    --db-snapshot-identifier {resource_id}-pre-encrypt-snapshot
+references:
+  - "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Overview.Encryption.html"

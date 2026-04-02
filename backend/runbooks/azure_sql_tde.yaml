@@ -1,0 +1,25 @@
+rule_id: azure_sql_tde
+title: Enable Transparent Data Encryption on Azure SQL Database
+severity: high
+automated: true
+framework_version: "CIS Azure v2.0 / PCI-DSS v4.0"
+last_verified: "2026-01"
+manual_steps:
+  - "Open Azure Portal → SQL databases → select the database."
+  - "Click 'Transparent data encryption' in the Security section."
+  - "Set 'Data encryption' to 'On'."
+  - "Click 'Save'."
+azure_cli_command: |
+  az sql db tde set \
+    --resource-group <RESOURCE_GROUP> \
+    --server <SERVER_NAME> \
+    --database {resource_id} \
+    --status Enabled
+rollback_command: |
+  az sql db tde set \
+    --resource-group <RESOURCE_GROUP> \
+    --server <SERVER_NAME> \
+    --database {resource_id} \
+    --status Disabled
+references:
+  - "https://docs.microsoft.com/en-us/azure/azure-sql/database/transparent-data-encryption-tde-overview"

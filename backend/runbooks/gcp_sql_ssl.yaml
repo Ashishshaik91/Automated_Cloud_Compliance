@@ -1,0 +1,17 @@
+rule_id: gcp_sql_ssl
+title: Require SSL for GCP Cloud SQL Instance
+severity: high
+automated: true
+framework_version: "CIS GCP v2.0"
+last_verified: "2026-01"
+manual_steps:
+  - "Open GCP Console → SQL → select the instance."
+  - "Click 'Connections' tab."
+  - "Under 'SSL', set 'SSL mode' to 'Require SSL'."
+  - "Click 'Save'."
+gcloud_command: |
+  gcloud sql instances patch {resource_id} --require-ssl
+rollback_command: |
+  gcloud sql instances patch {resource_id} --no-require-ssl
+references:
+  - "https://cloud.google.com/sql/docs/postgres/configure-ssl-instance"

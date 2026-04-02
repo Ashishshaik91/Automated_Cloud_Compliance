@@ -1,0 +1,17 @@
+rule_id: cloudtrail_logging
+title: Enable CloudTrail Logging
+severity: high
+automated: true
+framework_version: "CIS AWS v2.0 / PCI-DSS v4.0"
+last_verified: "2026-01"
+manual_steps:
+  - "Open the AWS CloudTrail console."
+  - "Select the trail that is not logging."
+  - "Click 'Edit' → Toggle 'Log status' to 'On'."
+  - "Click 'Save changes'."
+aws_cli_command: |
+  aws cloudtrail start-logging --name {resource_id}
+rollback_command: |
+  aws cloudtrail stop-logging --name {resource_id}
+references:
+  - "https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-turning-on-and-off.html"

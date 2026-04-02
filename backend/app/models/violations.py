@@ -75,6 +75,10 @@ class Violation(Base):
     )
     resolved_at:      Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
+    # Threat Intel enrichment (Feature 4) — CVEs linked to this resource type via NVD CPE search
+    cve_ids:  Mapped[Optional[dict]] = mapped_column(JSON)   # [{cve_id, cvss_score, description}]
+    cvss_max: Mapped[Optional[float]] = mapped_column(Float) # highest CVSS score of matched CVEs
+
     rule: Mapped["ViolationRule"]     = relationship(back_populates="violations")
     correlations: Mapped[list] = relationship(
         "DSPMCorrelation",

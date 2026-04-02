@@ -92,6 +92,21 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: str = "json"
 
+    # ---- Terraform State Ingestion (Feature 1) ----
+    # Mode: "json" (default, parse .tfstate directly), "binary" (run terraform CLI), "remote" (download from backend)
+    terraform_mode: str = "json"
+    # Required when remote state bucket uses SSE-KMS encryption
+    terraform_state_kms_key_arn: str = ""
+
+    # ---- Threat Intelligence Enrichment (Feature 4) ----
+    # NVD (National Vulnerability Database) — free tier available without key but rate-limited
+    nvd_api_key: str = ""
+    # VirusTotal v3 — free tier: 4 req/min; premium: unlimited
+    virustotal_api_key: SecretStr = SecretStr("")
+    # MISP — leave empty to disable; set to your MISP instance base URL to enable
+    misp_url: str = ""
+    misp_api_key: SecretStr = SecretStr("")
+
     @field_validator("app_env")
     @classmethod
     def validate_env(cls, v: str) -> str:

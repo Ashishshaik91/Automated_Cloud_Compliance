@@ -1,0 +1,23 @@
+rule_id: azure_storage_https
+title: Enforce HTTPS-Only Traffic on Azure Storage Account
+severity: high
+automated: true
+framework_version: "CIS Azure v2.0"
+last_verified: "2026-01"
+manual_steps:
+  - "Open Azure Portal → Storage accounts → select the account."
+  - "Click 'Configuration' in the left menu."
+  - "Set 'Secure transfer required' to 'Enabled'."
+  - "Click 'Save'."
+azure_cli_command: |
+  az storage account update \
+    --name {resource_id} \
+    --resource-group <RESOURCE_GROUP> \
+    --https-only true
+rollback_command: |
+  az storage account update \
+    --name {resource_id} \
+    --resource-group <RESOURCE_GROUP> \
+    --https-only false
+references:
+  - "https://docs.microsoft.com/en-us/azure/storage/common/storage-require-secure-transfer"

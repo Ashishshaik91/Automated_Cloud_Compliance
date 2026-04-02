@@ -1,0 +1,25 @@
+rule_id: iam_mfa
+title: Enforce MFA for IAM Users
+severity: critical
+automated: false
+framework_version: "CIS AWS v2.0 / PCI-DSS v4.0"
+last_verified: "2026-01"
+manual_steps:
+  - "Sign in to the AWS Management Console."
+  - "Navigate to IAM → Users → select the non-compliant user."
+  - "Click 'Security credentials' → 'Assigned MFA device' → 'Manage'."
+  - "Follow the wizard to assign a virtual or hardware MFA device."
+  - "Verify MFA is active by checking the 'MFA' column in the Users list."
+aws_cli_command: |
+  # MFA assignment cannot be automated — manual activation required.
+  # To list users missing MFA:
+  aws iam generate-credential-report
+  aws iam get-credential-report --query 'Content' --output text | base64 -d | \
+    awk -F',' 'NR>1 && $8=="false" {print $1}'
+rollback_command: |
+  # To deactivate MFA:
+  aws iam deactivate-mfa-device \
+    --user-name {resource_id} \
+    --serial-number <MFA_SERIAL_ARN>
+references:
+  - "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_mfa.html"

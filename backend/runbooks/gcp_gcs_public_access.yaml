@@ -1,0 +1,25 @@
+rule_id: gcp_gcs_public_access
+title: Remove Public Access from GCS Bucket
+severity: critical
+automated: true
+framework_version: "CIS GCP v2.0"
+last_verified: "2026-01"
+manual_steps:
+  - "Open GCP Console → Cloud Storage → Buckets → select the bucket."
+  - "Click 'Permissions' tab."
+  - "Find the member 'allUsers' or 'allAuthenticatedUsers'."
+  - "Click the trash icon to remove each public binding."
+  - "Save changes."
+gcloud_command: |
+  # Remove allUsers binding
+  gsutil iam ch -d allUsers:objectViewer gs://{resource_id}
+  gsutil iam ch -d allUsers:legacyBucketReader gs://{resource_id}
+
+  # Also enable uniform bucket-level access to prevent ACL bypass
+  gsutil uniformbucketlevelaccess set on gs://{resource_id}
+rollback_command: |
+  # Re-grant public read (use cautiously — review before running)
+  gsutil iam ch allUsers:objectViewer gs://{resource_id}
+references:
+  - "https://cloud.google.com/storage/docs/access-control/making-data-public"
+  - "https://cloud.google.com/storage/docs/uniform-bucket-level-access"

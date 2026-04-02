@@ -1,0 +1,27 @@
+rule_id: dspm_s3_pii_exposed
+title: Restrict Public Access on S3 Bucket with PII Data
+severity: critical
+automated: true
+framework_version: "GDPR / CCPA / PCI-DSS v4.0"
+last_verified: "2026-01"
+manual_steps:
+  - "This store has been classified as containing PII data and is publicly accessible."
+  - "Open AWS S3 console → select the bucket."
+  - "Click 'Permissions' → 'Block public access' → 'Edit'."
+  - "Enable all four block public access settings."
+  - "Review and remove any existing public bucket policies under 'Bucket policy'."
+  - "Notify your Data Protection Officer (DPO) of the potential data exposure."
+aws_cli_command: |
+  aws s3api put-public-access-block \
+    --bucket {resource_id} \
+    --public-access-block-configuration \
+      "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
+rollback_command: |
+  # WARNING: This re-exposes PII data. Only run if intentional and approved.
+  aws s3api put-public-access-block \
+    --bucket {resource_id} \
+    --public-access-block-configuration \
+      "BlockPublicAcls=false,IgnorePublicAcls=false,BlockPublicPolicy=false,RestrictPublicBuckets=false"
+references:
+  - "https://gdpr-info.eu/art-32-gdpr/"
+  - "https://docs.aws.amazon.com/AmazonS3/latest/userguide/access-control-block-public-access.html"

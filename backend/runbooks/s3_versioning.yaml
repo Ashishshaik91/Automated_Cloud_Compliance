@@ -1,0 +1,21 @@
+rule_id: s3_versioning
+title: Enable S3 Bucket Versioning
+severity: medium
+automated: true
+framework_version: "CIS AWS v2.0"
+last_verified: "2026-01"
+manual_steps:
+  - "Open AWS S3 console."
+  - "Select the non-compliant bucket."
+  - "Click 'Properties' → 'Bucket Versioning' → 'Edit'."
+  - "Select 'Enable' and click 'Save changes'."
+aws_cli_command: |
+  aws s3api put-bucket-versioning \
+    --bucket {resource_id} \
+    --versioning-configuration Status=Enabled
+rollback_command: |
+  aws s3api put-bucket-versioning \
+    --bucket {resource_id} \
+    --versioning-configuration Status=Suspended
+references:
+  - "https://docs.aws.amazon.com/AmazonS3/latest/userguide/Versioning.html"

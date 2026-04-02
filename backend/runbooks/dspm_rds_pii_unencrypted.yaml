@@ -1,0 +1,39 @@
+rule_id: dspm_rds_pii_unencrypted
+title: Enable Encryption on RDS Database Containing PII/PHI
+severity: critical
+automated: false
+framework_version: "HIPAA / GDPR / PCI-DSS v4.0"
+last_verified: "2026-01"
+manual_steps:
+  - "CRITICAL: This RDS instance contains PII/PHI data and is NOT encrypted at rest."
+  - "RDS encryption requires instance recreation (cannot be enabled in-place)."
+  - "1. Create a snapshot: AWS RDS console → Snapshots → Take snapshot."
+  - "2. Copy snapshot with encryption enabled: select KMS key during copy."
+  - "3. Restore encrypted snapshot to a new instance."
+  - "4. Run data validation on the new encrypted instance."
+  - "5. Update application connection strings."
+  - "6. Delete original unencrypted instance after confirmed cutover."
+  - "Notify your DPO of the period of exposure and document the remediation."
+aws_cli_command: |
+  # Step 1: Snapshot
+  aws rds create-db-snapshot \
+    --db-instance-identifier {resource_id} \
+    --db-snapshot-identifier {resource_id}-pii-preremediation
+
+  # Step 2: Encrypted copy
+  aws rds copy-db-snapshot \
+    --source-db-snapshot-identifier {resource_id}-pii-preremediation \
+    --target-db-snapshot-identifier {resource_id}-encrypted \
+    --kms-key-id alias/aws/rds
+
+  # Step 3: Restore
+  aws rds restore-db-instance-from-db-snapshot \
+    --db-instance-identifier {resource_id}-secure \
+    --db-snapshot-identifier {resource_id}-encrypted
+rollback_command: |
+  aws rds restore-db-instance-from-db-snapshot \
+    --db-instance-identifier {resource_id}-rollback \
+    --db-snapshot-identifier {resource_id}-pii-preremediation
+references:
+  - "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Overview.Encryption.html"
+  - "https://gdpr-info.eu/art-32-gdpr/"

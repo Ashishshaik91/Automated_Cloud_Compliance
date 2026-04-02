@@ -1,0 +1,27 @@
+rule_id: dspm_gcs_public_pii
+title: Remove Public IAM Bindings from GCS Bucket with Sensitive Data
+severity: critical
+automated: true
+framework_version: "GDPR / CIS GCP v2.0"
+last_verified: "2026-01"
+manual_steps:
+  - "CRITICAL: This GCS bucket contains sensitive data and is publicly readable."
+  - "Open GCP Console → Cloud Storage → select the bucket."
+  - "Click 'Permissions' → identify any 'allUsers' or 'allAuthenticatedUsers' bindings."
+  - "Remove all public IAM role bindings."
+  - "Enable uniform bucket-level access to prevent ACL bypass."
+  - "Review object-level ACLs and remove any public entries."
+  - "Notify your DPO of the exposure incident."
+gcloud_command: |
+  # Remove all public bindings
+  gsutil iam ch -d allUsers gs://{resource_id}
+  gsutil iam ch -d allAuthenticatedUsers gs://{resource_id}
+
+  # Enable uniform bucket-level access (prevents ACL bypass)
+  gsutil uniformbucketlevelaccess set on gs://{resource_id}
+rollback_command: |
+  # WARNING: Only run if public access was intentional and reviewed
+  gsutil iam ch allUsers:objectViewer gs://{resource_id}
+references:
+  - "https://cloud.google.com/storage/docs/access-control/iam"
+  - "https://gdpr-info.eu/art-32-gdpr/"

@@ -39,6 +39,9 @@ class Organization(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
+    # When False, users in this org may execute live (non-dry-run) remediations.
+    # Only admins may set this to False. Defaults to True (safe).
+    remediation_dry_run: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     parent: Mapped[Optional["Organization"]] = relationship(
         "Organization", remote_side="Organization.id", back_populates="children"
@@ -114,3 +117,29 @@ class UserAccountRole(Base):
             select(cls).where(cls.user_id == user_id).order_by(cls.granted_at.desc())
         )
         return list(result.scalars().all())
+
+
+class AuditorOrgAssignment(Base):
+    """
+    Explicit grant giving an Auditor-role user read access to a specific organisation.
+    Auditors can only be assigned by Admins. Access is read-only.
+    """
+
+    __tablename__ = "auditor_org_assignments"
+    __table_args__ = (
+        UniqueConstraint("auditor_user_id", "organization_id", name="uq_auditor_org"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    auditor_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    organization_id: Mapped[int] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    granted_by: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    granted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )

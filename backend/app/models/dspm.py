@@ -8,7 +8,7 @@ import enum
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship, declared_attr
 
 from app.models.database import Base
@@ -75,6 +75,19 @@ class DSPMFinding(Base):
     #   base = sensitivity weight × public_access_multiplier / encryption_factor
     risk_score:        Mapped[float]         = mapped_column(Float, default=0.0)
     risk_level:        Mapped[str]           = mapped_column(String(32), nullable=False, default="none")
+
+    # Optional FK to the cloud account that owns this data store.
+    # Used for org-scoped queries via CloudAccount.organization_id.
+    cloud_account_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("cloud_accounts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    # Threat Intel enrichment fields (Feature 4)
+    cve_ids:                 Mapped[Optional[dict]] = mapped_column(JSON)       # [{cve_id, cvss_score, description}]
+    cvss_max:                Mapped[Optional[float]] = mapped_column(Float)     # highest CVSS score
+    vt_reputation:           Mapped[Optional[float]] = mapped_column(Float)     # 0.0–1.0
+    threat_intel_boost:      Mapped[Optional[float]] = mapped_column(Float)     # score delta applied
+    threat_intel_enriched_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     last_scanned:      Mapped[datetime]      = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

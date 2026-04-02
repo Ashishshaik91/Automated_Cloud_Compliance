@@ -1,0 +1,22 @@
+rule_id: dspm_s3_unencrypted_data
+title: Enable Encryption on S3 Bucket with Sensitive Data
+severity: high
+automated: true
+framework_version: "HIPAA / PCI-DSS v4.0"
+last_verified: "2026-01"
+manual_steps:
+  - "This data store contains sensitive classified data with no encryption."
+  - "Enable SSE-KMS (preferred for sensitive data) or SSE-S3 on the bucket."
+  - "Open AWS S3 console → select the bucket → 'Properties' → 'Default encryption' → 'Edit'."
+  - "Choose 'SSE-KMS' and select a KMS key. Click 'Save changes'."
+  - "For existing objects: use S3 Batch Operations to encrypt retroactively."
+aws_cli_command: |
+  aws s3api put-bucket-encryption \
+    --bucket {resource_id} \
+    --server-side-encryption-configuration \
+      '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"aws:kms"}}]}'
+rollback_command: |
+  aws s3api delete-bucket-encryption --bucket {resource_id}
+references:
+  - "https://docs.aws.amazon.com/AmazonS3/latest/userguide/default-bucket-encryption.html"
+  - "https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-batch-operations.html"

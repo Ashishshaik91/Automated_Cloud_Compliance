@@ -1,0 +1,59 @@
+# Terraform Drift Detection Policy
+# Feature 1: Identifies resources where live SDK config diverges from declared TF state.
+#
+# Fields compared:
+#   encryption  — must match between Terraform and live SDK
+#   public_access — must match; live exposure not declared in TF is CRITICAL
+#   region      — drift here implies resource was recreated in a different region
+#
+# Usage: Called by scanner.py after merging SDK and TF resource lists.
+
+rule_id: terraform_drift_encryption
+title: Terraform Drift — Encryption Setting Changed
+severity: high
+description: |
+  The encryption configuration of this resource in the live cloud environment
+  does not match the value declared in Terraform state. This may indicate
+  manual configuration drift (e.g., someone disabled encryption via the console)
+  or an out-of-band configuration change that bypasses IaC controls.
+drift_field: encryption_status
+remediation: |
+  1. Review the Terraform declaration for this resource.
+  2. Determine if the Terraform state or live config is the desired state.
+  3. If Terraform is correct, run 'terraform apply' to reconcile.
+  4. If live is correct, update the Terraform code and run 'terraform apply'.
+  5. Enable state locking to prevent concurrent modifications.
+
+---
+
+rule_id: terraform_drift_public_access
+title: Terraform Drift — Resource Publicly Exposed Without TF Declaration
+severity: critical
+description: |
+  This resource is publicly accessible in the live cloud environment but is NOT
+  declared as public in Terraform state. This is a critical drift indicating
+  either a manual policy change or a misconfiguration that bypasses IaC.
+drift_field: public_access
+remediation: |
+  1. IMMEDIATELY restrict public access using the appropriate CLI command from the runbook.
+  2. Audit CloudTrail / Activity Logs to identify who made the change and when.
+  3. Update Terraform state: 'terraform refresh' then 'terraform plan' to detect drift.
+  4. Apply corrective Terraform if the live state is incorrect.
+  5. Enable AWS Config rules or Azure Policy to prevent manual public exposure.
+
+---
+
+rule_id: terraform_drift_region
+title: Terraform Drift — Resource Exists in Unexpected Region
+severity: medium
+description: |
+  This resource was found in a region that does not match the region declared in
+  Terraform state. This typically indicates the resource was deleted and recreated
+  manually, or that the Terraform workspace is pointing to the wrong state file.
+drift_field: region
+remediation: |
+  1. Run 'terraform refresh' to update state with actual resource location.
+  2. Run 'terraform plan' to review the impact of the region drift.
+  3. If the resource was manually recreated, import it into Terraform:
+     'terraform import <resource_type>.<name> <resource_id>'
+  4. Review data residency and compliance requirements for the new region.
