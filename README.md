@@ -9,6 +9,13 @@ A production-grade, Docker-containerized SaaS platform for continuous multi-clou
 - **DSPM (Data Security Posture Management)**: Automated discovery of sensitive cloud payloads, deep data classification (PII, PHI, Credentials), and impact-based data risk scoring.
 - **Correlation Layer**: Intelligently intersects DSPM data risk with underlying infrastructure Violations to instantly surface, map, and prioritize critical, weaponizable attack paths.
 
+## 🚀 Recent Updates & Progression (April 2026)
+
+- **Terraform State Ingestion & Drift Mapping**: Seamlessly ingest local or remote (`S3`, `GCS`, `Azure Blob`) `.tfstate` files to detect configuration drift against live environments side-by-side.
+- **Remediation Runbooks & Engine**: Dynamic YAML-backed remediation runbooks featuring explicit automated cloud-native rollback commands (e.g., AWS CLI, Azure CLI), protected by native per-org `dry_run` safety guardrails.
+- **Multi-Account Org Isolation (RBAC)**: Complete multi-tenant API scoping across Admin, Auditor, and Customer tiers, fully permeating background Celery workers and Postgres databases via Alembic migrations.
+- **Threat Intel Risk Enrichment**: Extends DSPM anomaly calculations by aggregating dynamic external intelligence—such as VT IP Reputations and automated NVD/CVE mapping—incorporating fail-open, rate-limited architectural patterns.
+
 ## 🏗️ Architecture
 
 ```text
