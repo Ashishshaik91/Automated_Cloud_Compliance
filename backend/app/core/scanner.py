@@ -17,6 +17,7 @@ from app.connectors.base import CloudConnectorBase
 from app.connectors.aws_connector import AWSConnector
 from app.connectors.azure_connector import AzureConnector
 from app.connectors.gcp_connector import GCPConnector
+from app.connectors.terraform_connector import TerraformConnector
 from app.core.cac_engine import CaCEngine
 from app.core.policy_loader import PolicyLoader
 from app.core.evidence import EvidenceManager
@@ -30,6 +31,9 @@ CONNECTOR_MAP: dict[str, type[CloudConnectorBase]] = {
     "aws": AWSConnector,
     "azure": AzureConnector,
     "gcp": GCPConnector,
+    # Terraform connector: parses .tfstate / terraform show -json for drift detection.
+    # Enabled when TERRAFORM_MODE != '' and account.provider == 'terraform'.
+    "terraform": TerraformConnector,
 }
 
 
@@ -58,11 +62,13 @@ class ScanOrchestrator:
         framework: str,
         triggered_by: str = "scheduled",
         dry_run: bool = False,
+        organization_id: int | None = None,
     ) -> ScanResult:
         """Execute a full compliance scan for an account."""
         logger.info(
             "Starting scan",
             account_id=account.id,
+            organization_id=organization_id,
             framework=framework,
             dry_run=dry_run,
         )
@@ -146,21 +152,43 @@ class ScanOrchestrator:
 # ---- Celery Tasks ----
 
 @shared_task(name="tasks.run_scheduled_scan", bind=True, max_retries=3)
-def run_scheduled_scan(self, account_id: int, framework: str = "all") -> dict[str, Any]:
-    """Celery task: run a compliance scan for a cloud account."""
+def run_scheduled_scan(
+    self,
+    account_id: int,
+    framework: str = "all",
+    organization_id: int | None = None,
+) -> dict[str, Any]:
+    """
+    Celery task: run a compliance scan for a cloud account.
+
+    organization_id is propagated from the API layer so that
+    background scan results can be attributed to the correct org
+    and org-scoped queries in post-scan hooks work correctly.
+    """
     try:
-        return asyncio.run(_async_scheduled_scan(account_id, framework))
+        return asyncio.run(
+            _async_scheduled_scan(account_id, framework, organization_id)
+        )
     except Exception as exc:
-        logger.error("Scan task failed", account_id=account_id, error=str(exc))
+        logger.error(
+            "Scan task failed",
+            account_id=account_id,
+            organization_id=organization_id,
+            error=str(exc),
+        )
         raise self.retry(exc=exc, countdown=60)
 
 
-async def _async_scheduled_scan(account_id: int, framework: str) -> dict[str, Any]:
+async def _async_scheduled_scan(
+    account_id: int,
+    framework: str,
+    organization_id: int | None = None,
+) -> dict[str, Any]:
     from app.models.database import engine
     # CRITICAL: Force the SQLAlchemy async engine to drop old connections tied
-    # to dead event loops from previous Celery task runs
+    # to dead event loops from previous Celery task runs.
     await engine.dispose()
-    
+
     async with AsyncSessionLocal() as db:
         from sqlalchemy import select
         result = await db.execute(
@@ -170,13 +198,30 @@ async def _async_scheduled_scan(account_id: int, framework: str) -> dict[str, An
         if not account:
             return {"error": f"Account {account_id} not found"}
 
+        # Validate org ownership — ensure account belongs to the dispatching org
+        if organization_id is not None and account.organization_id != organization_id:
+            logger.warning(
+                "Scan task org mismatch — account does not belong to dispatching org",
+                account_id=account_id,
+                account_org=account.organization_id,
+                dispatched_org=organization_id,
+            )
+            return {
+                "error": "Account does not belong to the specified organization",
+                "account_id": account_id,
+                "organization_id": organization_id,
+            }
+
         policy_loader = PolicyLoader()
         evidence_manager = EvidenceManager()
         orchestrator = ScanOrchestrator(db, policy_loader, evidence_manager)
-        scan = await orchestrator.run_scan(account, framework)
+        scan = await orchestrator.run_scan(
+            account, framework, organization_id=organization_id
+        )
         await db.commit()
         return {
-            "scan_id": scan.id,
+            "scan_id":          scan.id,
             "compliance_score": scan.compliance_score,
-            "total_checks": scan.total_checks,
+            "total_checks":     scan.total_checks,
+            "organization_id":  organization_id,
         }

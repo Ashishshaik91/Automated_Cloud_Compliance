@@ -37,10 +37,72 @@ sys.modules.setdefault("asyncpg", _asyncpg_mock)
 _celery_mock = MagicMock()
 sys.modules.setdefault("celery", _celery_mock)
 
-# Stub optional cloud SDK packages that may not be installed locally
-for _sdk in [
-    "boto3", "botocore",
-    "azure.identity", "azure.mgmt.storage",
+# ── 3. Stub cloud + infra SDKs ─ submodule-aware ──────────────────────────
+# boto3 / botocore — import chains do e.g. `from botocore.exceptions import X`
+# so we must pre-register every sub-module that may be referenced.
+_botocore_mock = MagicMock()
+for _submod in (
+    "botocore",
+    "botocore.exceptions",
+    "botocore.config",
+    "botocore.client",
+    "botocore.session",
+):
+    sys.modules.setdefault(_submod, _botocore_mock)
+
+_boto3_mock = MagicMock()
+for _submod in ("boto3", "boto3.session"):
+    sys.modules.setdefault(_submod, _boto3_mock)
+
+# Azure SDK stubs
+for _sdk in (
+    "azure",
+    "azure.identity",
+    "azure.mgmt",
+    "azure.mgmt.storage",
+    "azure.mgmt.compute",
+    "azure.mgmt.network",
+    "azure.mgmt.resource",
+    "azure.mgmt.monitor",
+    "azure.mgmt.sql",
+    "azure.mgmt.keyvault",
+):
+    sys.modules.setdefault(_sdk, MagicMock())
+
+# GCP SDK stubs
+for _sdk in (
+    "google",
+    "google.cloud",
     "google.cloud.storage",
-]:
+    "google.cloud.asset_v1",
+    "google.cloud.logging",
+    "google.cloud.securitycenter",
+    "google.cloud.compute_v1",
+    "google.cloud.resource_manager",
+    "google.auth",
+    "google.oauth2",
+    "googleapiclient",
+    "googleapiclient.discovery",
+):
+    sys.modules.setdefault(_sdk, MagicMock())
+
+# Infra utility stubs (minio, alerting, celery sub-packages)
+for _sdk in (
+    "minio",
+    "minio.error",
+    "slack_sdk",
+    "slack_sdk.web",
+    "sendgrid",
+    "kombu",
+    "kombu.utils",
+    "celery.utils",
+    "celery.app",
+    "requests",
+    "aiohttp",
+    "reportlab",
+    "reportlab.lib",
+    "jinja2",
+    "pyod",
+    "pyod.models",
+):
     sys.modules.setdefault(_sdk, MagicMock())
