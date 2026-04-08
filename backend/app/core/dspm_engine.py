@@ -244,17 +244,18 @@ async def enrich_with_threat_intel(
     redis_client: Any = None,
 ) -> tuple[float, dict[str, Any]]:
     """
-    Query NVD (CPE-based) and VirusTotal to compute a threat intel boost.
+    Query NVD (CPE-based), VirusTotal, and MISP to compute a threat intel boost.
 
     Returns (boost, boost_reason). On any failure, returns (0.0, {}).
     Updates finding fields in-place; caller must flush/commit the session.
     """
     from app.integrations.nvd_client import query_nvd_cpe
     from app.integrations.virustotal_client import get_ip_reputation
+    from app.integrations.misp_client import search_misp_events
     from app.integrations.threat_intel_cache import cache_get, cache_set
 
     try:
-        # NVD CVE lookup (cached)
+        # ── NVD CVE lookup (cached by resource type) ─────────────────────
         nvd_cache_key = f"{finding.data_store_type}:{finding.cloud_provider}"
         cve_list = await cache_get(redis_client, "nvd", nvd_cache_key) if redis_client else None
         if cve_list is None:
@@ -262,14 +263,48 @@ async def enrich_with_threat_intel(
             if redis_client:
                 await cache_set(redis_client, "nvd", nvd_cache_key, cve_list)
 
-        # VT IP reputation — only if the store is publicly accessible
+        # ── VirusTotal IP reputation ──────────────────────────────────────
+        # Only query if the store is publicly accessible AND we have a real endpoint.
+        # data_store_id is the bucket/account name — use it as the VT "domain" query
+        # for S3/GCS/blob hostnames; fall back to None (skips VT).
         vt_reputation = None
         if finding.public_access:
-            vt_reputation = await get_ip_reputation("0.0.0.0", redis_client=redis_client)  # placeholder IP
+            # Build a plausible public hostname to query (best-effort)
+            endpoint = _build_public_endpoint(finding.data_store_type, finding.data_store_id)
+            if endpoint:
+                vt_cache_key = f"vt:{endpoint}"
+                vt_reputation = await cache_get(redis_client, "virustotal", endpoint) if redis_client else None
+                if vt_reputation is None:
+                    vt_reputation = await get_ip_reputation(endpoint, redis_client=redis_client)
+                    if vt_reputation is not None and redis_client:
+                        await cache_set(redis_client, "virustotal", endpoint, vt_reputation)
 
+        # ── MISP threat event lookup ──────────────────────────────────────
+        misp_events: list[dict[str, Any]] = []
+        if finding.public_access and finding.data_store_id:
+            misp_cache_key = finding.data_store_id
+            misp_events = await cache_get(redis_client, "misp", misp_cache_key) if redis_client else None
+            if misp_events is None:
+                misp_events = await search_misp_events(finding.data_store_id)
+                if redis_client:
+                    await cache_set(redis_client, "misp", misp_cache_key, misp_events)
+
+        # ── Compute composite boost ───────────────────────────────────────
         boost, boost_reason = _compute_threat_intel_boost(cve_list, vt_reputation)
 
-        # Update finding fields
+        # MISP boost: High-severity MISP event (threat_level_id=1) → +15, Medium (2) → +8
+        misp_boost = 0.0
+        if misp_events:
+            levels = [int(e.get("threat_level", 4)) for e in misp_events]
+            if 1 in levels:
+                misp_boost = 15.0
+            elif 2 in levels:
+                misp_boost = 8.0
+        boost = min(20.0, max(boost, misp_boost))  # cap at 20 total
+        boost_reason["misp_events"] = len(misp_events)
+        boost_reason["misp_boost"]  = misp_boost
+
+        # ── Update finding in-place ───────────────────────────────────────
         finding.cve_ids                  = cve_list
         finding.cvss_max                 = boost_reason["cvss_max"]
         finding.vt_reputation            = vt_reputation
@@ -285,6 +320,20 @@ async def enrich_with_threat_intel(
             error=str(e),
         )
         return 0.0, {}
+
+
+def _build_public_endpoint(store_type: str, store_id: str) -> str | None:
+    """
+    Build a plausible public hostname for VT reputation lookup.
+    Returns None for private store types where VT is not meaningful.
+    """
+    store_type = (store_type or "").lower()
+    if store_type in ("s3", "gcs", "blob", "bigquery"):
+        # These are bucket/account names — not an IP, so VT domain check applies.
+        # VT also accepts domain-style strings; bucket names work as identifiers.
+        return store_id[:253]  # max domain label length
+    return None
+
 
 
 # ---------------------------------------------------------------------------

@@ -14,7 +14,7 @@ celery_app = Celery(
     "compliance_platform",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=["app.core.scanner", "app.core.ingestion"],
+    include=["app.core.scanner", "app.core.ingestion", "app.core.threat_intel_task"],
 )
 
 celery_app.conf.update(
@@ -30,6 +30,7 @@ celery_app.conf.update(
     task_routes={
         "tasks.run_scheduled_scan": {"queue": "scans"},
         "tasks.ingest_events": {"queue": "ingestion"},
+        "tasks.run_scheduled_enrichment": {"queue": "scans"},
     },
     beat_schedule={
         # Run all scans every 5 minutes (configurable)
@@ -37,6 +38,11 @@ celery_app.conf.update(
             "task": "tasks.run_scheduled_scan",
             "schedule": settings.scan_interval_seconds,
             "args": (1, "all"),  # account_id=1, framework=all
+        },
+        # Run threat intel enrichment every 6 hours (21600 seconds)
+        "scheduled-threat-intel-enrichment": {
+            "task": "tasks.run_scheduled_enrichment",
+            "schedule": 21600.0,
         },
     },
 )

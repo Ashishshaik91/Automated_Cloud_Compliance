@@ -106,14 +106,23 @@ class AnomalyDetector:
         return results
 
     def _extract_features(self, data: list[dict[str, Any]]) -> pd.DataFrame:
-        """Extract numerical features from compliance metrics dicts."""
+        """Extract numerical features from compliance metrics dicts.
+
+        Includes threat intel features (cvss_max, vt_reputation, threat_intel_boost)
+        so the model can detect anomalies correlated with external threat activity.
+        """
         feature_keys = [
+            # Core compliance metrics
             "compliance_score",
             "total_checks",
             "failed_checks",
             "passed_checks",
             "critical_count",
             "high_count",
+            # Threat intel enrichment features
+            "cvss_max",             # max CVSS score from NVD CVEs (0.0 if none)
+            "vt_reputation",        # VirusTotal malicious ratio (0.0 if unknown)
+            "threat_intel_boost",   # combined boost applied to risk score
         ]
         rows = []
         for d in data:
