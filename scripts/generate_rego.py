@@ -1,3 +1,5 @@
+# Dev utility — converts YAML compliance policies to OPA Rego stubs.
+# Run manually: python scripts/generate_rego.py
 import yaml
 from pathlib import Path
 

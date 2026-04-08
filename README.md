@@ -213,6 +213,8 @@ CloudCompliancePlatform/
 ├── frontend/                 # React 18 + Vite TUI
 ├── infra/                    # Terraform demo stack
 ├── opa/                      # OPA Rego policies
+├── scripts/                  # Dev utilities (not part of runtime or CI)
+│   └── generate_rego.py      # Converts YAML policies → OPA Rego stubs
 ├── .github/workflows/        # GitHub Actions CI/CD
 └── docker-compose.yml
 ```
