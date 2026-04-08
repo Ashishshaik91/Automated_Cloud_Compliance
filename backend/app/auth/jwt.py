@@ -27,10 +27,15 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
-def create_access_token(subject: str, extra_claims: dict[str, Any] | None = None) -> str:
-    """Create a short-lived JWT access token."""
+def create_access_token(
+    subject: str,
+    extra_claims: dict[str, Any] | None = None,
+    expires_minutes: int | None = None,
+) -> str:
+    """Create a JWT access token. expires_minutes overrides the global default."""
     now = datetime.now(timezone.utc)
-    expire = now + timedelta(minutes=settings.jwt_access_token_expire_minutes)
+    ttl = expires_minutes if expires_minutes is not None else settings.jwt_access_token_expire_minutes
+    expire = now + timedelta(minutes=ttl)
     payload: dict[str, Any] = {
         "sub": subject,
         "iat": now,

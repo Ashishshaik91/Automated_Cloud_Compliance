@@ -74,3 +74,48 @@ class TokenResponse(BaseModel):
 
 class RefreshRequest(BaseModel):
     refresh_token: str
+
+
+# ---------------------------------------------------------------------------
+# MFA schemas
+# ---------------------------------------------------------------------------
+
+class LoginResponse(BaseModel):
+    """
+    Returned by POST /auth/login.
+    If mfa_required=True the caller must POST to /auth/mfa/verify with the
+    mfa_token (5-min, type=mfa_pending) and a 6-digit TOTP code.
+    If mfa_required=False a full TokenResponse is embedded directly.
+    """
+    mfa_required: bool
+    # Present only when mfa_required=False
+    access_token: Optional[str] = None
+    refresh_token: Optional[str] = None
+    token_type: str = "bearer"
+    # Present only when mfa_required=True
+    mfa_token: Optional[str] = None
+
+
+class MFAVerifyRequest(BaseModel):
+    """Exchange mfa_token + TOTP code (or backup code) for full session tokens."""
+    mfa_token: str
+    code: str = Field(..., min_length=6, max_length=8, description="6-digit TOTP or 8-char backup code")
+    use_backup: bool = False
+
+
+class MFAEnrolResponse(BaseModel):
+    """Returned by POST /auth/mfa/enrol — show QR once, never again."""
+    qr_png_b64: str          # base64 PNG, embed as <img src="data:image/png;base64,...">
+    manual_secret: str       # show alongside QR for manual entry
+    backup_codes: list[str]  # plaintext — user must save these
+
+
+class MFAConfirmRequest(BaseModel):
+    """POST /auth/mfa/confirm — verify the first code to activate MFA."""
+    code: str = Field(..., min_length=6, max_length=6)
+
+
+class MFADisableRequest(BaseModel):
+    """POST /auth/mfa/disable — requires current TOTP to prove possession."""
+    code: str = Field(..., min_length=6, max_length=8)
+    use_backup: bool = False

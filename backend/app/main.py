@@ -14,15 +14,17 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from app.api import alerts, audit_logs, cloud_accounts, compliance, dspm, orgs, reports, scans, terraform, threat_intel, users, violations
+from app.api import alerts, audit_logs, cloud_accounts, compliance, dspm, orgs, reports, scans, terraform, threat_intel, users, violations, workflows
 from app.auth.router import router as auth_router
 from app.config import get_settings
 from app.models.database import init_db
 from app.models import user, compliance as compliance_models, org, audit_log, violations as violations_models, dspm as dspm_models  # noqa: F401 — registers models
+from app.models import score as score_models, workflow as workflow_models  # noqa: F401 — registers models
 from app.core.seeder import seed_default_users
 from app.core.violations_engine import seed_violation_rules, run_violations_engine
 from app.core.dspm_engine import run_dspm_engine
 from app.core.correlator import run_correlator
+from app.ws.router import router as ws_router
 from app.utils.logger import configure_logging
 
 settings = get_settings()
@@ -50,7 +52,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
             await run_dspm_engine(db)
             await run_correlator(db)
     logger.info("Violations + DSPM engines initialised")
+
+    # Start WebSocket Redis listener as background task
+    import asyncio
+    ws_listener_task = None
+    try:
+        from app.ws.connection_manager import start_redis_listener
+        ws_listener_task = asyncio.create_task(
+            start_redis_listener(settings.redis_url)
+        )
+        logger.info("WebSocket Redis listener started")
+    except Exception as e:
+        logger.warning("WebSocket Redis listener not started", error=str(e))
+
     yield
+
+    if ws_listener_task:
+        ws_listener_task.cancel()
     logger.info("Shutting down Cloud Compliance Platform")
 
 
@@ -133,6 +151,8 @@ app.include_router(violations.router,    prefix=f"{API_PREFIX}/violations",  tag
 app.include_router(dspm.router,          prefix=f"{API_PREFIX}/dspm",        tags=["DSPM"])
 app.include_router(terraform.router,     prefix=f"{API_PREFIX}/terraform",   tags=["Terraform"])
 app.include_router(threat_intel.router,  prefix=f"{API_PREFIX}/threat-intel", tags=["Threat Intelligence"])
+app.include_router(workflows.router,     prefix=f"{API_PREFIX}/workflows",    tags=["Approval Workflows"])
+app.include_router(ws_router,            prefix=f"{API_PREFIX}/ws",           tags=["WebSocket"])
 
 
 # ---- Health / Readiness ----

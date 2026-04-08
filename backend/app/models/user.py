@@ -5,7 +5,7 @@ User SQLAlchemy model.
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, select
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -35,6 +35,18 @@ class User(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
     last_login_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # ── TOTP MFA ─────────────────────────────────────────────────────────────
+    # Secret stored as encrypted base32; NULL = not enrolled
+    mfa_secret: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # JSON list of hashed 8-char backup codes; NULL until enrolled
+    mfa_backup_codes: Mapped[Optional[list]] = mapped_column(
+        JSON, nullable=True
+    )
+    mfa_enrolled_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
