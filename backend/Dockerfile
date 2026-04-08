@@ -44,6 +44,10 @@ COPY app/ ./app/
 RUN mkdir -p ./policies
 COPY policies/ ./policies/
 
+# Copy Alembic files
+COPY alembic.ini .
+COPY alembic/ ./alembic/
+
 # Set correct ownership
 RUN chown -R appuser:appgroup /app
 

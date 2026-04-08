@@ -37,6 +37,38 @@ CONNECTOR_MAP: dict[str, type[CloudConnectorBase]] = {
 }
 
 
+def _merge_resources(
+    sdk_resources: list[dict],
+    tf_resources: list[dict],
+) -> list[dict]:
+    """
+    Merge SDK-enumerated resources with Terraform-declared resources.
+
+    Deduplication rule:
+    - If the same resource_id exists in both SDK and TF output, the SDK config
+      wins for the 'config' field (live state) so compliance checks run against
+      the actual cloud state.
+    - The TF-declared attributes are preserved in 'terraform_declared_config'
+      on the merged record for downstream drift detection.
+    - TF-only resources (not yet created in the cloud, or orphaned) are included
+      as-is so drift policies can flag them.
+    """
+    sdk_by_id: dict[str, dict] = {r["resource_id"]: r for r in sdk_resources}
+
+    for tf_res in tf_resources:
+        rid = tf_res["resource_id"]
+        if rid in sdk_by_id:
+            # SDK record exists — annotate it with the TF-declared config
+            sdk_by_id[rid]["terraform_declared_config"] = tf_res.get(
+                "terraform_declared_config", tf_res.get("config", {})
+            )
+        else:
+            # TF-only resource (no live SDK counterpart)
+            sdk_by_id[rid] = tf_res
+
+    return list(sdk_by_id.values())
+
+
 class ScanOrchestrator:
     """
     Orchestrates a full compliance scan:
@@ -63,14 +95,23 @@ class ScanOrchestrator:
         triggered_by: str = "scheduled",
         dry_run: bool = False,
         organization_id: int | None = None,
+        terraform_state_path: str | None = None,
+        terraform_working_dir: str | None = None,
     ) -> ScanResult:
-        """Execute a full compliance scan for an account."""
+        """Execute a full compliance scan for an account.
+
+        When terraform_state_path or terraform_working_dir is supplied:
+        - A TerraformConnector runs alongside (or instead of) the SDK connector.
+        - Resources from both are merged: SDK config wins for live compliance;
+          TF-declared config is preserved in terraform_declared_config for drift.
+        """
         logger.info(
             "Starting scan",
             account_id=account.id,
             organization_id=organization_id,
             framework=framework,
             dry_run=dry_run,
+            terraform_state_path=terraform_state_path,
         )
 
         # Create scan record
@@ -83,15 +124,42 @@ class ScanOrchestrator:
         self.db.add(scan)
         await self.db.flush()  # get scan.id without full commit
 
-        # Instantiate the right connector
+        # ── Enumerate cloud resources via SDK connector ───────────────────────
         connector_cls = CONNECTOR_MAP.get(account.provider.lower())
-        if not connector_cls:
+        resources: list[dict] = []
+
+        if connector_cls and account.provider.lower() != "terraform":
+            # Standard SDK connector (AWS / Azure / GCP)
+            connector = connector_cls(account)
+            resources = await connector.enumerate_resources(framework)
+        elif account.provider.lower() == "terraform" and not terraform_state_path and not terraform_working_dir:
+            # Pure terraform account with no path override — use settings-level defaults
+            connector = TerraformConnector(account_id=str(account.id))
+            resources = await connector.enumerate_resources()
+        elif not connector_cls:
             logger.warning("No connector for provider", provider=account.provider)
             scan.completed_at = datetime.now(timezone.utc)
             return scan
+        else:
+            connector = connector_cls(account)
+            resources = await connector.enumerate_resources(framework)
 
-        connector = connector_cls(account)
-        resources = await connector.enumerate_resources(framework)
+        # ── Optionally merge Terraform state resources ────────────────────────
+        # Triggered when the scan request carries terraform_state_path or
+        # terraform_working_dir (real-time `terraform show -json` wiring).
+        if terraform_state_path or terraform_working_dir:
+            tf_resources = await self._fetch_terraform_resources(
+                account_id=str(account.id),
+                state_path=terraform_state_path,
+                working_dir=terraform_working_dir,
+            )
+            resources = _merge_resources(resources, tf_resources)
+            logger.info(
+                "Merged SDK + Terraform resources",
+                sdk_count=len(resources) - len(tf_resources),
+                tf_count=len(tf_resources),
+                merged_count=len(resources),
+            )
 
         checks: list[ComplianceCheck] = []
         passed = failed = 0
@@ -148,6 +216,39 @@ class ScanOrchestrator:
         await self.engine.close()
         return scan
 
+    # ── Terraform resource fetching ───────────────────────────────────────────
+
+    async def _fetch_terraform_resources(
+        self,
+        account_id: str,
+        state_path: str | None,
+        working_dir: str | None,
+    ) -> list[dict]:
+        """Create the right TerraformConnector variant and enumerate resources."""
+        from app.connectors.terraform_connector import TerraformConnector
+
+        if working_dir or (state_path and state_path.lower() == "binary"):
+            # Real-time: run `terraform show -json` in the working directory
+            resolved_dir = working_dir or "."
+            tf = TerraformConnector.from_working_dir(
+                working_dir=resolved_dir,
+                account_id=account_id,
+            )
+        elif state_path:
+            # Parse a local .tfstate file or download from a remote URI
+            tf = TerraformConnector(
+                state_path=state_path,
+                account_id=account_id,
+            )
+        else:
+            return []
+
+        try:
+            return await tf.enumerate_resources()
+        except Exception as exc:
+            logger.error("Terraform resource fetch failed", error=str(exc))
+            return []  # fail-open: continue with SDK resources only
+
 
 # ---- Celery Tasks ----
 
@@ -157,17 +258,25 @@ def run_scheduled_scan(
     account_id: int,
     framework: str = "all",
     organization_id: int | None = None,
+    terraform_state_path: str | None = None,
+    terraform_working_dir: str | None = None,
 ) -> dict[str, Any]:
     """
     Celery task: run a compliance scan for a cloud account.
 
     organization_id is propagated from the API layer so that
-    background scan results can be attributed to the correct org
-    and org-scoped queries in post-scan hooks work correctly.
+    background scan results can be attributed to the correct org.
+
+    terraform_state_path / terraform_working_dir enable real-time
+    Terraform state ingestion alongside the SDK connector scan.
     """
     try:
         return asyncio.run(
-            _async_scheduled_scan(account_id, framework, organization_id)
+            _async_scheduled_scan(
+                account_id, framework, organization_id,
+                terraform_state_path=terraform_state_path,
+                terraform_working_dir=terraform_working_dir,
+            )
         )
     except Exception as exc:
         logger.error(
@@ -183,6 +292,8 @@ async def _async_scheduled_scan(
     account_id: int,
     framework: str,
     organization_id: int | None = None,
+    terraform_state_path: str | None = None,
+    terraform_working_dir: str | None = None,
 ) -> dict[str, Any]:
     from app.models.database import engine
     # CRITICAL: Force the SQLAlchemy async engine to drop old connections tied
@@ -216,7 +327,11 @@ async def _async_scheduled_scan(
         evidence_manager = EvidenceManager()
         orchestrator = ScanOrchestrator(db, policy_loader, evidence_manager)
         scan = await orchestrator.run_scan(
-            account, framework, organization_id=organization_id
+            account,
+            framework,
+            organization_id=organization_id,
+            terraform_state_path=terraform_state_path,
+            terraform_working_dir=terraform_working_dir,
         )
         await db.commit()
         return {

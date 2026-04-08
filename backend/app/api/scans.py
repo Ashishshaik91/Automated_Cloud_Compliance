@@ -52,6 +52,8 @@ async def trigger_scan(
         body.account_id,
         body.framework,
         organization_id=account.organization_id,
+        terraform_state_path=body.terraform_state_path,
+        terraform_working_dir=body.terraform_working_dir,
     )
     logger.info(
         "Scan triggered",
@@ -60,6 +62,8 @@ async def trigger_scan(
         task_id=task.id,
         user_id=current_user.id,
         org_id=account.organization_id,
+        terraform_state_path=body.terraform_state_path,
+        terraform_working_dir=body.terraform_working_dir,
     )
     return {
         "task_id": task.id,

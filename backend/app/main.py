@@ -14,7 +14,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from app.api import alerts, audit_logs, cloud_accounts, compliance, dspm, orgs, reports, scans, users, violations
+from app.api import alerts, audit_logs, cloud_accounts, compliance, dspm, orgs, reports, scans, terraform, users, violations
 from app.auth.router import router as auth_router
 from app.config import get_settings
 from app.models.database import init_db
@@ -131,6 +131,7 @@ app.include_router(orgs.router,          prefix=f"{API_PREFIX}/orgs",        tag
 app.include_router(audit_logs.router,    prefix=f"{API_PREFIX}/audit-logs", tags=["Audit Logs"])
 app.include_router(violations.router,    prefix=f"{API_PREFIX}/violations",  tags=["Violations"])
 app.include_router(dspm.router,          prefix=f"{API_PREFIX}/dspm",        tags=["DSPM"])
+app.include_router(terraform.router,     prefix=f"{API_PREFIX}/terraform",   tags=["Terraform"])
 
 
 # ---- Health / Readiness ----

@@ -124,18 +124,34 @@ class TerraformConnector:
         state_path: str | Path | None = None,
         account_id: str = "",
         redis_client: Any = None,
+        working_dir: str | Path | None = None,
     ) -> None:
         self.state_path   = Path(state_path) if state_path else None
         self.account_id   = account_id
         self.redis_client = redis_client
         self.settings     = get_settings()
+        # Working directory for `terraform show -json` (binary mode)
+        self.working_dir  = Path(working_dir) if working_dir else Path.cwd()
+
+    @classmethod
+    def from_working_dir(cls, working_dir: str | Path, account_id: str = "", redis_client: Any = None) -> "TerraformConnector":
+        """
+        Convenience constructor for binary mode.
+        Sets working_dir and forces TERRAFORM_MODE=binary so enumerate_resources()
+        immediately runs `terraform show -json` in that directory.
+        """
+        instance = cls(state_path=None, account_id=account_id, redis_client=redis_client, working_dir=working_dir)
+        # Override mode at instance level (does not mutate global settings)
+        instance._mode_override = "binary"
+        return instance
 
     async def enumerate_resources(self) -> list[dict[str, Any]]:
         """
         Load and parse Terraform state, returning normalised resource dicts.
-        Automatically selects mode based on TERRAFORM_MODE config.
+        Automatically selects mode based on TERRAFORM_MODE config,
+        or the instance-level _mode_override set by from_working_dir().
         """
-        mode = self.settings.terraform_mode.lower()
+        mode = getattr(self, "_mode_override", None) or self.settings.terraform_mode.lower()
 
         if mode == "remote":
             return await self._from_remote()
@@ -162,7 +178,16 @@ class TerraformConnector:
     # ── Binary mode (opt-in) ─────────────────────────────────────────────────
 
     async def _from_binary(self) -> list[dict[str, Any]]:
-        """Run `terraform show -json` and parse its output."""
+        """Run `terraform show -json` in working_dir and parse its output."""
+        cwd = self.working_dir
+        if not cwd.is_dir():
+            logger.error(
+                "terraform show -json: working_dir does not exist or is not a directory",
+                working_dir=str(cwd),
+            )
+            return []
+
+        logger.info("Running terraform show -json", working_dir=str(cwd))
         try:
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
@@ -171,19 +196,34 @@ class TerraformConnector:
                     ["terraform", "show", "-json"],
                     capture_output=True,
                     text=True,
-                    timeout=30,
+                    timeout=60,
+                    cwd=str(cwd),   # ← run inside the project directory
                 ),
             )
             if result.returncode != 0:
-                logger.error("terraform show -json failed", stderr=result.stderr[:500])
+                logger.error(
+                    "terraform show -json failed",
+                    returncode=result.returncode,
+                    stderr=result.stderr[:800],
+                    working_dir=str(cwd),
+                )
+                return []
+            if not result.stdout.strip():
+                logger.warning(
+                    "terraform show -json produced no output — is the state initialized?",
+                    working_dir=str(cwd),
+                )
                 return []
             raw = json.loads(result.stdout)
             return _parse_tfstate(raw)
         except FileNotFoundError:
-            logger.error("Terraform binary not found in PATH; install Terraform or use TERRAFORM_MODE=json")
+            logger.error(
+                "Terraform binary not found in PATH; install Terraform or use TERRAFORM_MODE=json",
+                working_dir=str(cwd),
+            )
             return []
         except subprocess.TimeoutExpired:
-            logger.error("terraform show -json timed out after 30s")
+            logger.error("terraform show -json timed out after 60s", working_dir=str(cwd))
             return []
         except json.JSONDecodeError as e:
             logger.error("terraform show -json output is not valid JSON", error=str(e))

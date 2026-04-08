@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 class CloudAccountCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
-    provider: str = Field(..., pattern="^(aws|azure|gcp|on_prem)$")
+    provider: str = Field(..., pattern="^(aws|azure|gcp|terraform|on_prem)$")
     account_id: str = Field(..., min_length=1, max_length=255)
     region: Optional[str] = None
 
@@ -51,6 +51,23 @@ class ScanTriggerRequest(BaseModel):
     account_id: int
     framework: str = Field(..., pattern="^(pci_dss|hipaa|gdpr|soc2|nist|cis|owasp|custom|all)$")
     dry_run: bool = False
+    # Terraform real-time fetch options
+    # If set, overrides the connector's auto-detected state source
+    terraform_state_path: Optional[str] = Field(
+        default=None,
+        description=(
+            "Local .tfstate file path, or remote URI (s3://, gs://, https://...blob...). "
+            "When provided, triggers a Terraform state scan in addition to the cloud SDK scan. "
+            "Use 'binary' to run terraform show -json in the current working directory."
+        ),
+    )
+    terraform_working_dir: Optional[str] = Field(
+        default=None,
+        description=(
+            "Absolute path to the Terraform project directory. "
+            "Used when terraform_state_path='binary' to run `terraform show -json` in that dir."
+        ),
+    )
 
 
 class ScanResultResponse(BaseModel):
