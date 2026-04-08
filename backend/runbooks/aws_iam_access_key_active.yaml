@@ -1,0 +1,35 @@
+rule_id: aws_iam_access_key_active
+title: Disable or Rotate Active IAM Access Keys
+severity: high
+automated: false
+framework_version: "CIS AWS v2.0 / PCI-DSS v4.0"
+last_verified: "2026-04"
+manual_steps:
+  - "Open the AWS IAM console → Users → select the user."
+  - "Click 'Security credentials'."
+  - "Under 'Access keys', identify keys that are Active and have not been rotated within 90 days."
+  - "Click 'Make inactive' to disable, or 'Delete' to permanently remove."
+  - "If the key is still in use, generate a new access key first, update all consuming applications, then deactivate the old key."
+aws_cli_command: |
+  # List access keys for a user
+  aws iam list-access-keys --user-name {resource_id}
+
+  # Deactivate a specific key
+  aws iam update-access-key \
+    --user-name {resource_id} \
+    --access-key-id <ACCESS_KEY_ID> \
+    --status Inactive
+
+  # Delete a specific key
+  aws iam delete-access-key \
+    --user-name {resource_id} \
+    --access-key-id <ACCESS_KEY_ID>
+rollback_command: |
+  # Reactivate a previously deactivated key
+  aws iam update-access-key \
+    --user-name {resource_id} \
+    --access-key-id <ACCESS_KEY_ID> \
+    --status Active
+references:
+  - "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html"
+  - "https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html#rotate-credentials"

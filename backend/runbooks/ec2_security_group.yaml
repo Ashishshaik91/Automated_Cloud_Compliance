@@ -1,0 +1,43 @@
+rule_id: ec2_security_group
+title: Restrict EC2 Security Group — Remove World-Open Inbound Rules
+severity: critical
+automated: true
+framework_version: "CIS AWS v2.0 / PCI-DSS v4.0 / NIST 800-53"
+last_verified: "2026-04"
+manual_steps:
+  - "Open the AWS EC2 console → Security Groups."
+  - "Select the offending security group."
+  - "Click 'Inbound rules' → 'Edit inbound rules'."
+  - "Remove or restrict any rule that allows 0.0.0.0/0 or ::/0 on administrative ports (22, 3389, etc.)."
+  - "Replace with specific CIDR blocks or security group references."
+  - "Click 'Save rules'."
+aws_cli_command: |
+  # Revoke the world-open SSH inbound rule
+  aws ec2 revoke-security-group-ingress \
+    --group-id {resource_id} \
+    --protocol tcp \
+    --port 22 \
+    --cidr 0.0.0.0/0
+
+  # Revoke IPv6 variant if present
+  aws ec2 revoke-security-group-ingress \
+    --group-id {resource_id} \
+    --ip-permissions '[{"IpProtocol":"tcp","FromPort":22,"ToPort":22,"Ipv6Ranges":[{"CidrIpv6":"::/0"}]}]'
+
+  # Optional: add a restricted rule for your bastion CIDR
+  # aws ec2 authorize-security-group-ingress \
+  #   --group-id {resource_id} \
+  #   --protocol tcp \
+  #   --port 22 \
+  #   --cidr <YOUR_BASTION_CIDR>
+rollback_command: |
+  # Re-authorise world-open SSH — WARNING: this re-opens the vulnerability
+  aws ec2 authorize-security-group-ingress \
+    --group-id {resource_id} \
+    --protocol tcp \
+    --port 22 \
+    --cidr 0.0.0.0/0
+references:
+  - "https://docs.aws.amazon.com/vpc/latest/userguide/VPC_SecurityGroups.html"
+  - "https://www.cisecurity.org/benchmark/amazon_web_services"
+  - "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/security-group-rules.html"

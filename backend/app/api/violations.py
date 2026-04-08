@@ -18,7 +18,7 @@ from app.models.violations import Violation, ViolationRule
 from app.models.compliance import CloudAccount
 from app.models.org import Organization
 from app.core.violations_engine import run_violations_engine
-from app.core.remediation import RemediationEngine
+from app.core.remediation import RemediationEngine, load_runbook, list_runbooks, RULE_ID_TO_RUNBOOK
 from app.core.audit import log_event
 from app.auth.dependencies import get_current_user
 from app.auth.scoping import get_org_scope, apply_org_scope, require_write_access
@@ -175,26 +175,37 @@ async def refresh_violations(
     return {"status": "ok", "new_violations": new_count}
 
 
-# ── Runbook endpoint (Feature 2) ──────────────────────────────────────────────
+# ── Runbook discovery (Feature 2) ────────────────────────────────────────────
+
+@router.get("/remediations")
+async def list_available_runbooks(
+    _=Depends(get_current_user),
+):
+    """Return a summary list of all available remediation runbooks."""
+    return {"runbooks": list_runbooks(), "total": len(list_runbooks())}
+
+
+# ── Runbook detail (Feature 2) ────────────────────────────────────────────────
 
 @router.get("/remediations/{rule_id}/runbook")
 async def get_runbook(
     rule_id: str,
     _=Depends(get_current_user),
 ):
-    """Return the YAML runbook for a given rule_id as structured JSON."""
-    # Sanitise input — only allow alphanumeric, hyphens, underscores
-    safe_id = "".join(c for c in rule_id if c.isalnum() or c in "-_")
-    runbook_path = RUNBOOKS_DIR / f"{safe_id}.yaml"
-    if not runbook_path.exists():
+    """Return the full YAML runbook for a given rule_id as structured JSON.
+
+    Accepts both policy_id format (e.g. 's3-encryption-required') and
+    raw filename format (e.g. 's3_encryption'). Uses the RULE_ID_TO_RUNBOOK
+    mapping to resolve the correct file.
+    """
+    runbook = load_runbook(rule_id)
+    if not runbook:
+        available = [r["rule_id"] for r in list_runbooks()]
         raise HTTPException(
             status_code=404,
-            detail=f"No runbook found for rule '{rule_id}'. "
-                   f"Available runbooks: {[f.stem for f in RUNBOOKS_DIR.glob('*.yaml')]}",
+            detail=f"No runbook found for rule '{rule_id}'. Available: {available}",
         )
-    with runbook_path.open() as fh:
-        data = yaml.safe_load(fh)
-    return data
+    return runbook
 
 
 # ── Rollback endpoint (Feature 2) ────────────────────────────────────────────
