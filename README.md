@@ -17,6 +17,10 @@ A Docker-containerized SaaS platform for continuous multi-cloud compliance monit
 | **Multi-Cloud Connectors** | AWS (`boto3`), Azure (`azure-mgmt-*`), GCP (`google-cloud-*`) with unified resource enumeration |
 | **ML Anomaly Detection** | Isolation Forest on compliance metrics + threat intel features to reduce false positives |
 | **Evidence Chain** | SHA-256 hash chains + HMAC signatures stored in MinIO for tamper-proof audit evidence |
+| **TOTP MFA** | Two-step login with TOTP verify ±1 window; QR enrolment; 8×8-char hashed backup codes |
+| **Compliance Score Engine** | Weighted severity scoring; grade bands A–F; per-framework multipliers; daily snapshot trend |
+| **Approval Workflows** | 4-eyes change-management gate; full state machine; Celery expiry sweep |
+| **WebSocket Feed** | Redis pub/sub per org; JWT-authenticated live event stream; ping/pong keepalive |
 
 ---
 
@@ -62,16 +66,67 @@ Three external feeds fanned out into DSPM findings and violation rows:
 
 ---
 
-## Upcoming Sprint
+### ✅ TOTP Multi-Factor Authentication
 
-Four features in active development — see `implementation_plan.md` for full specs:
+Two-step login flow with authenticator-app TOTP (`pyotp`):
 
-| Feature | Key Additions |
+- **Step 1** `POST /auth/login` — password verified; if MFA enrolled returns `{ mfa_required: true, mfa_token }` (5-min JWT)
+- **Step 2** `POST /auth/mfa/verify` — exchange `mfa_token` + 6-digit TOTP (or 8-char backup code) for full session tokens
+- **`POST /auth/mfa/enrol`**: generates a new TOTP secret + base64 QR PNG; MFA is NOT active until `/mfa/confirm` is called
+- **`POST /auth/mfa/confirm`**: verifies first code to prove the user has scanned correctly, then sets `mfa_enabled = true`
+- **`POST /auth/mfa/disable`**: requires current TOTP or backup code to prove possession before disabling
+- **Backup codes**: 8 × 8-char uppercase codes, hashed with Argon2; consumed one-at-a-time and removed after use
+- **Migration `0003`**: adds `mfa_secret`, `mfa_enabled`, `mfa_backup_codes (JSON)`, `mfa_enrolled_at` columns to `users`
+
+### ✅ Compliance Score Engine
+
+Weighted scoring with grade bands and historical trends:
+
+- **Severity weights**: CRITICAL→10, HIGH→5, MEDIUM→2, LOW→1 — failing checks deduct proportional weight
+- **Framework multipliers**: PCI-DSS/HIPAA→1.3, GDPR→1.2, SOC 2→1.1, NIST/CIS→1.0, OWASP→0.9
+- **DSPM penalty**: each 10 points of average DSPM risk score subtracts 1 from the org-level aggregate
+- **Grade bands**: A (≥90), B (≥75), C (≥60), D (≥45), F (<45)
+- **`ScoreSnapshot`**: daily org-level snapshot stored in `score_snapshots` for 90-day trend history
+- **`AccountScoreCache`**: latest per-account per-framework score for fast dashboard reads
+- **Celery Beat**: `daily-score-snapshot` runs at 00:05 UTC across all active orgs
+- **Migration `0004`**: creates `score_snapshots` and `account_score_cache` tables
+
+### ✅ Approval Workflows
+
+4-eyes change-management gate for high-risk platform actions:
+
+- **State machine**: `PENDING → APPROVED → EXECUTED` · `PENDING → REJECTED` · `PENDING → CANCELLED` · `PENDING → EXPIRED`
+- **4-eyes rule**: enforced in `approve_request()` — requester cannot approve their own request; raises `PermissionError`
+- **Role gate**: only `admin` and `auditor` roles can approve or reject; `dev`/`viewer` can only submit or cancel
+- **Expiry**: requests expire after 24 hours by default (configurable per-request up to 168 h); checked at approval time
+- **Celery Beat**: `expire-stale-approvals` sweeps every hour — marks PENDING+expired rows as EXPIRED in bulk
+- **Execution**: `POST /api/v1/workflows/requests/{id}/execute` (admin-only) dispatches to the remediation engine
+- **Audit trail**: `execution_result` JSON stored on the row; `reviewed_at`, `approver_id`, `notes` always recorded
+- **Migration `0005`**: creates `approval_requests` table with status, risk level, expiry, and execution_result columns
+
+**Approval Workflow API — `/api/v1/workflows/`:**
+
+| Endpoint | Description |
 |---|---|
-| **TOTP MFA** | Two-step login via short-lived `mfa_pending` JWT (5 min); TOTP verify ±1 window; 8×8-char hashed backup codes; admin force-reset |
-| **Compliance Score Engine** | Weighted scoring (severity × framework multiplier); grade bands A–F; daily trend snapshots |
-| **Approval Workflows** | 4-eyes rule; `PENDING → APPROVED → EXECUTED / REJECTED / EXPIRED / CANCELLED` state machine; Celery expiry sweep |
-| **WebSocket Real-Time Dashboard** | Redis pub/sub per org; JWT query-param auth on handshake; live event feed; event ticker UI |
+| `POST /requests` | Submit a new approval request |
+| `GET /requests` | List requests (role-scoped: admin/auditor see org; dev sees own) |
+| `GET /requests/{id}` | Request detail |
+| `POST /requests/{id}/approve` | Approve with optional notes |
+| `POST /requests/{id}/reject` | Reject with mandatory notes |
+| `POST /requests/{id}/cancel` | Cancel (requester or admin only) |
+| `POST /requests/{id}/execute` | Execute approved action (admin only) |
+
+### ✅ WebSocket Real-Time Dashboard
+
+Org-scoped live event feed via Redis pub/sub:
+
+- **Channel pattern**: `compliance:live:{org_id}` — one Redis channel per org; workers publish, manager fans-out to all org WS clients
+- **Auth**: JWT passed as query param `?token=<access_token>` (browser WS does not support custom headers)
+- **Event types streamed**: `scan.completed`, `violation.detected`, `score.updated`, `approval.pending`, `alert.fired`, `remediation.result`
+- **Reconnect**: Redis listener runs as an asyncio background task with an infinite reconnect loop (5s backoff)
+- **Fail-open**: `publish_event()` catches all Redis errors and logs a warning — never raises to the caller
+- **Keepalive**: client sends `ping` text frame; server echoes `pong`
+- **WS endpoint**: `ws://host/api/v1/ws/live?token=`
 
 ---
 
@@ -179,7 +234,7 @@ CloudCompliancePlatform/
 | **Container hardening** | Non-root user, read-only FS |
 | **Dependency scanning** | `pip-audit` in CI |
 | **Inactive credentials** | `last_login_at` stamps for CIS 1.3 |
-| **TOTP MFA** | Two-step login via short-lived `mfa_pending` JWT (5 min); `pyotp` TOTP verify ±1 window; 8×8-char hashed backup codes; admin force-reset *(upcoming sprint)* |
+| **TOTP MFA** | Two-step login; `mfa_pending` JWT (5 min); `pyotp` TOTP verify ±1 window; 8×8-char Argon2-hashed backup codes; `/mfa/enrol`, `/mfa/confirm`, `/mfa/disable` |
 
 ---
 
@@ -215,6 +270,7 @@ GitHub Actions (`.github/workflows/ci.yml`):
 ```
 fastapi · uvicorn · sqlalchemy[asyncio] · asyncpg · alembic
 redis · celery · pydantic-settings · python-jose[cryptography] · argon2-cffi
+pyotp · qrcode[pil] · Pillow
 boto3 · azure-mgmt-* · google-cloud-* · httpx · aiohttp
 scikit-learn · pandas · pyod · joblib
 structlog · prometheus-fastapi-instrumentator
