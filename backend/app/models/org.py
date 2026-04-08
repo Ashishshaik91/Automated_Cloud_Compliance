@@ -143,3 +143,15 @@ class AuditorOrgAssignment(Base):
     granted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
+    # Soft-revoke: set is_active=False instead of deleting (preserves audit trail)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Time-limited grants: None = permanent
+    expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    @property
+    def is_expired(self) -> bool:
+        if self.expires_at is None:
+            return False
+        return datetime.now(timezone.utc) > self.expires_at

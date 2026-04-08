@@ -61,11 +61,16 @@ async def get_org_scope(user: User, db: AsyncSession) -> OrgScope:
         return OrgScope(mode="all")
 
     if user.role == "auditor":
-        # Fetch the orgs explicitly assigned to this auditor
+        from datetime import datetime, timezone as tz
         from app.models.org import AuditorOrgAssignment
+        now = datetime.now(tz.utc)
         result = await db.execute(
             select(AuditorOrgAssignment.organization_id).where(
-                AuditorOrgAssignment.auditor_user_id == user.id
+                AuditorOrgAssignment.auditor_user_id == user.id,
+                # Only count active, non-expired grants
+                AuditorOrgAssignment.is_active == True,
+                (AuditorOrgAssignment.expires_at == None)
+                | (AuditorOrgAssignment.expires_at > now),
             )
         )
         assigned_ids = list(result.scalars().all())

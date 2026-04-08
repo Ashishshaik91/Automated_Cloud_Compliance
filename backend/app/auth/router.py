@@ -2,6 +2,7 @@
 Auth router — login, register, refresh token endpoints.
 """
 
+from datetime import datetime, timezone
 from typing import Annotated
 
 import structlog
@@ -43,9 +44,18 @@ async def login(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account is disabled",
         )
-    access_token = create_access_token(str(user.id), {"role": user.role})
+    access_token = create_access_token(
+        str(user.id),
+        {
+            "role": user.role,
+            "org_id": user.organization_id,  # hint for frontend; DB re-validates on writes
+        },
+    )
     refresh_token = create_refresh_token(str(user.id))
-    logger.info("User logged in", user_id=user.id)
+    # Stamp last_login_at for CIS compliance (inactive credential detection)
+    user.last_login_at = datetime.now(timezone.utc)
+    await db.commit()
+    logger.info("User logged in", user_id=user.id, role=user.role)
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,

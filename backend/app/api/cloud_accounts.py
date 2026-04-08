@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import AdminUser, CurrentUser
+from app.auth.scoping import apply_org_scope, get_org_scope, require_write_access
 from app.core.audit import log_event
 from app.models.compliance import CloudAccount
 from app.models.database import get_db
@@ -35,6 +36,8 @@ async def create_cloud_account(
         account_id=body.account_id,
         region=body.region,
         owner_user_id=current_user.id,
+        # Inherit the creating admin's org so the account is immediately scoped
+        organization_id=current_user.organization_id,
     )
     db.add(account)
     await db.flush()
@@ -50,7 +53,8 @@ async def create_cloud_account(
     await log_event(
         db, current_user, "account.create",
         resource_type="CloudAccount", resource_id=str(account.id),
-        detail={"name": account.name, "provider": account.provider},
+        detail={"name": account.name, "provider": account.provider,
+                "organization_id": account.organization_id},
         request=request,
     )
     logger.info("Cloud account registered", account_id=account.id, provider=body.provider)
@@ -64,30 +68,46 @@ async def list_cloud_accounts(
 ) -> list[CloudAccountResponse]:
     """List cloud accounts visible to the current user.
 
-    - Admins see all active accounts.
-    - All other roles see only accounts they have an active, non-expired role assignment on.
+    Access tiers:
+    - Admin   → all active accounts (no filter)
+    - Auditor → accounts in explicitly assigned orgs only
+    - Dev/Viewer → accounts in own org only, AND must have an active role assignment
     """
-    if current_user.role == "admin":
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    scope = await get_org_scope(current_user, db)
+
+    if scope.is_admin:
+        # Admin sees every active account
         result = await db.execute(
             select(CloudAccount).where(CloudAccount.is_active == True)
         )
-        accounts = result.scalars().all()
-    else:
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc)
-        # Join through UserAccountRole to get only assigned, active, non-expired accounts
-        result = await db.execute(
+        return [CloudAccountResponse.model_validate(a) for a in result.scalars().all()]
+
+    if scope.is_read_only:
+        # Auditor: all accounts in assigned orgs (no role-assignment requirement)
+        stmt = (
             select(CloudAccount)
-            .join(UserAccountRole, UserAccountRole.cloud_account_id == CloudAccount.id)
-            .where(
-                UserAccountRole.user_id == current_user.id,
-                UserAccountRole.is_active == True,
-                CloudAccount.is_active == True,
-                (UserAccountRole.expires_at == None) | (UserAccountRole.expires_at > now),
-            )
+            .where(CloudAccount.is_active == True)
         )
-        accounts = result.scalars().all()
-    return [CloudAccountResponse.model_validate(a) for a in accounts]
+        stmt = apply_org_scope(stmt, CloudAccount, scope)
+        result = await db.execute(stmt)
+        return [CloudAccountResponse.model_validate(a) for a in result.scalars().all()]
+
+    # Dev / viewer: must have an active, non-expired role assignment AND be in own org
+    stmt = (
+        select(CloudAccount)
+        .join(UserAccountRole, UserAccountRole.cloud_account_id == CloudAccount.id)
+        .where(
+            UserAccountRole.user_id == current_user.id,
+            UserAccountRole.is_active == True,
+            CloudAccount.is_active == True,
+            (UserAccountRole.expires_at == None) | (UserAccountRole.expires_at > now),
+        )
+    )
+    stmt = apply_org_scope(stmt, CloudAccount, scope)
+    result = await db.execute(stmt)
+    return [CloudAccountResponse.model_validate(a) for a in result.scalars().all()]
 
 
 @router.delete("/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
