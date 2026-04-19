@@ -2,36 +2,45 @@ name: "NIST SP 800-53"
 policies:
   - id: nist-audit-logging
     name: "Audit Logging Enabled (AU-2)"
-    resource_type: "CloudTrail"
-    opa_package: "compliance.nist.cloudtrail"
+    resource_type: "cloudtrail"
+    opa_package: "compliance.generic"
     severity: "high"
     rules:
-      - field: "audit_logging_enabled"
+      - field: "is_logging"
         operator: "is_true"
 
-  - id: nist-crypto-fips
-    name: "FIPS Validated Crypto (SC-13)"
-    resource_type: "S3 Bucket"
-    opa_package: "compliance.nist.s3"
+  - id: nist-s3-encryption
+    name: "Data at Rest Encryption (SC-28)"
+    resource_type: "s3_bucket"
+    opa_package: "compliance.generic"
     severity: "critical"
     rules:
-      - field: "fips_validated"
+      - field: "encryption_enabled"
+        operator: "is_true"
+
+  - id: nist-s3-public-access
+    name: "Restrict Public Access (AC-3)"
+    resource_type: "s3_bucket"
+    opa_package: "compliance.generic"
+    severity: "critical"
+    rules:
+      - field: "public_access_blocked"
         operator: "is_true"
 
   - id: nist-iam-mfa
     name: "Authenticator Management (IA-5)"
-    resource_type: "IAM User"
-    opa_package: "compliance.nist.iam"
+    resource_type: "iam_user"
+    opa_package: "compliance.generic"
     severity: "critical"
     rules:
       - field: "mfa_enabled"
         operator: "is_true"
 
-  - id: nist-data-at-rest
-    name: "Protection of Info at Rest (SC-28)"
-    resource_type: "RDS Instance"
-    opa_package: "compliance.nist.rds"
-    severity: "critical"
+  - id: nist-cloudtrail-multiregion
+    name: "Multi-Region Audit Trail (AU-12)"
+    resource_type: "cloudtrail"
+    opa_package: "compliance.generic"
+    severity: "high"
     rules:
-      - field: "encryption_at_rest"
+      - field: "multi_region"
         operator: "is_true"

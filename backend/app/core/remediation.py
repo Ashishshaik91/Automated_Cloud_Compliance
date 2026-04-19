@@ -6,7 +6,7 @@ All actions are logged with full audit trail.
 Dry-run mode is per-org (Organisation.remediation_dry_run flag).
 
 Key design decisions:
- - load_runbook(rule_id): resolves policy_id → runbook filename via RULE_ID_TO_RUNBOOK
+ - load_runbook(rule_id): resolves policy_id ? runbook filename via RULE_ID_TO_RUNBOOK
    mapping. This decouples the policy IDs emitted by the violations engine (kebab-case)
    from the runbook filenames (snake_case).
  - execute_rollback(rule_id, resource_id, org_id): for automated=true rules, calls
@@ -29,7 +29,7 @@ logger = structlog.get_logger(__name__)
 
 RUNBOOKS_DIR = Path(__file__).parent.parent.parent / "runbooks"
 
-# ── rule_id → runbook filename mapping ────────────────────────────────────────
+# -- rule_id ? runbook filename mapping ----------------------------------------
 # Maps the policy_id strings used in ComplianceCheck / REMEDIATION_MAP to the
 # actual YAML runbook filenames in backend/runbooks/.
 # This avoids renaming the physical files: the YAML rule_id field is human-facing,
@@ -57,7 +57,7 @@ RULE_ID_TO_RUNBOOK: dict[str, str] = {
     "dspm-s3-unencrypted":       "dspm_s3_unencrypted_data",
     "dspm-rds-pii-unencrypted":  "dspm_rds_pii_unencrypted",
     "dspm-gcs-public-pii":       "dspm_gcs_public_pii",
-    # ── violations_engine.py rule IDs (uppercase, provider-prefixed format) ──
+    # -- violations_engine.py rule IDs (uppercase, provider-prefixed format) --
     # These are the rule_id values actually stored in the Violation table.
     "AWS-S3-001":  "s3_public_access",
     "AWS-SG-001":  "ec2_security_group",
@@ -100,7 +100,7 @@ def load_runbook(rule_id: str) -> dict[str, Any] | None:
     """
     Load a runbook YAML file for the given rule_id.
 
-    Resolves via RULE_ID_TO_RUNBOOK first (policy_id → filename), then falls
+    Resolves via RULE_ID_TO_RUNBOOK first (policy_id ? filename), then falls
     back to a direct filename match (for custom/unknown rule IDs).
     Sanitises the rule_id to prevent path traversal.
     Returns the parsed dict, or None if no runbook exists for this rule.
@@ -150,7 +150,7 @@ class RemediationEngine:
     dry_run is set per-org via Organisation.remediation_dry_run.
     """
 
-    # Maps (resource_type, policy_id) → remediation function name
+    # Maps (resource_type, policy_id) ? remediation function name
     REMEDIATION_MAP: dict[tuple[str, str], str] = {
         # AWS
         ("s3_bucket",    "s3-encryption-required"):       "_enable_s3_encryption",
@@ -320,14 +320,16 @@ class RemediationEngine:
         Dispatch SDK rollback for automated rules by calling the inverse handler.
         Each SDK rollback handler is the logical inverse of the corresponding remediation.
         """
-        # Build a minimal synthetic check so handler signatures work unchanged
-        check = ComplianceCheck.__new__(ComplianceCheck)
-        check.policy_id    = rule_id
-        check.resource_id  = resource_id
-        check.resource_type = ""
+        # Use SimpleNamespace to avoid SQLAlchemy ORM initialisation errors
+        import types
+        check = types.SimpleNamespace(
+            policy_id=rule_id,
+            resource_id=resource_id,
+            resource_type="",
+        )
 
         rollback_dispatch: dict[str, str] = {
-            # compliance scanner format
+            # ── Compliance scanner short IDs ─────────────────────────────────
             "s3-encryption-required":        "_rollback_s3_encryption",
             "s3-public-access-blocked":      "_rollback_s3_public_access",
             "s3-versioning-required":        "_rollback_s3_versioning",
@@ -339,12 +341,50 @@ class RemediationEngine:
             "dspm-gcs-public-pii":           "_rollback_gcs_public_access",
             "ec2-sg-open-ssh":               "_rollback_sg_open_ssh",
             "ec2-sg-unrestricted-ingress":   "_rollback_sg_open_ssh",
-            # violations engine format
+            # ── Violations engine format ──────────────────────────────────────
             "AWS-S3-001":  "_rollback_s3_public_access",
             "AWS-SG-001":  "_rollback_sg_open_ssh",
             "AWS-CT-001":  "_rollback_cloudtrail",
             "AZ-ST-001":   "_rollback_storage_https",
             "GCP-GCS-001": "_rollback_gcs_public_access",
+            # ── Framework-prefixed policy IDs from compliance checks ──────────
+            # S3 public access
+            "pci-s3-no-public-access":   "_rollback_s3_public_access",
+            "hipaa-s3-no-public":        "_rollback_s3_public_access",
+            "gdpr-s3-no-public":         "_rollback_s3_public_access",
+            "cis-s3-public-access":      "_rollback_s3_public_access",
+            "nist-s3-public-access":     "_rollback_s3_public_access",
+            "soc2-s3-public-access":     "_rollback_s3_public_access",
+            "owasp-s3-public-exposure":  "_rollback_s3_public_access",
+            # S3 encryption
+            "pci-s3-encryption-required": "_rollback_s3_encryption",
+            "hipaa-s3-encryption":        "_rollback_s3_encryption",
+            "gdpr-s3-encryption":         "_rollback_s3_encryption",
+            "cis-s3-encryption":          "_rollback_s3_encryption",
+            "nist-s3-encryption":         "_rollback_s3_encryption",
+            "soc2-s3-encryption":         "_rollback_s3_encryption",
+            "owasp-s3-encryption":        "_rollback_s3_encryption",
+            # S3 versioning
+            "hipaa-s3-versioning":        "_rollback_s3_versioning",
+            "gdpr-s3-versioning":         "_rollback_s3_versioning",
+            # CloudTrail
+            "pci-cloudtrail-enabled":          "_rollback_cloudtrail",
+            "pci-cloudtrail-validation":       "_rollback_cloudtrail",
+            "hipaa-cloudtrail-enabled":        "_rollback_cloudtrail",
+            "gdpr-cloudtrail-audit":           "_rollback_cloudtrail",
+            "cis-cloudtrail-log-validation":   "_rollback_cloudtrail",
+            "nist-audit-logging":              "_rollback_cloudtrail",
+            "nist-cloudtrail-multiregion":     "_rollback_cloudtrail",
+            "soc2-cloudtrail-monitoring":      "_rollback_cloudtrail",
+            "owasp-cloudtrail-logging":        "_rollback_cloudtrail",
+            # IAM MFA — manual only (no automated SDK action safe enough)
+            "pci-iam-mfa-required":   "_flag_iam_mfa_missing",
+            "hipaa-iam-mfa":          "_flag_iam_mfa_missing",
+            "nist-iam-mfa":           "_flag_iam_mfa_missing",
+            "soc2-iam-mfa":           "_flag_iam_mfa_missing",
+            "owasp-iam-no-mfa":       "_flag_iam_mfa_missing",
+            "cis-root-mfa":           "_flag_iam_mfa_missing",
+            "cis-iam-no-active-keys": "_flag_iam_mfa_missing",
         }
 
         handler_name = rollback_dispatch.get(rule_id)
@@ -366,7 +406,7 @@ class RemediationEngine:
             logger.error("SDK rollback failed", rule_id=rule_id, resource_id=resource_id, error=str(e))
             return {"status": "error", "message": str(e)}
 
-    # ── AWS remediation handlers ───────────────────────────────────────────────
+    # -- AWS remediation handlers -----------------------------------------------
 
     async def _enable_s3_encryption(
         self, check: ComplianceCheck, resource_data: dict[str, Any]
@@ -501,7 +541,7 @@ class RemediationEngine:
             "rules_revoked": revoked,
         }
 
-    # ── AWS rollback handlers ──────────────────────────────────────────────────
+    # -- AWS rollback handlers --------------------------------------------------
 
     async def _rollback_s3_encryption(
         self, check: ComplianceCheck, resource_data: dict[str, Any]
@@ -575,7 +615,7 @@ class RemediationEngine:
             "warning":  "SECURITY RISK: world-open SSH has been re-authorised",
         }
 
-    # ── Azure handlers ────────────────────────────────────────────────────────
+    # -- Azure handlers --------------------------------------------------------
 
     async def _enforce_storage_https(
         self, check: ComplianceCheck, resource_data: dict[str, Any]
@@ -643,7 +683,7 @@ class RemediationEngine:
             "runbook":  load_runbook("azure-sql-tde-required"),
         }
 
-    # ── GCP handlers ──────────────────────────────────────────────────────────
+    # -- GCP handlers ----------------------------------------------------------
 
     async def _block_gcs_public_access(
         self, check: ComplianceCheck, resource_data: dict[str, Any]
@@ -710,3 +750,58 @@ class RemediationEngine:
             "resource": check.resource_id,
             "runbook":  load_runbook("gcp-sql-ssl-required"),
         }
+
+
+# -- Standalone helper called by workflow_engine.py ----------------------------
+
+async def execute_remediation_action(
+    action_type: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Entry point called by the approval workflow engine when a request is executed.
+
+    Dispatches based on action_type:
+      - "remediation"    -> run RemediationEngine via rule_id + resource_id in payload
+      - "policy_change"  -> acknowledged; no automated action
+      - "account_delete" -> acknowledged; no automated action
+      - "mfa_bypass"     -> acknowledged; no automated action
+      - anything else    -> returns a summary of the payload for audit purposes
+    """
+    logger.info("Workflow execute_remediation_action called", action_type=action_type)
+
+    if action_type == "remediation":
+        rule_id     = payload.get("rule_id", "")
+        resource_id = payload.get("resource_id", "")
+        org_id      = payload.get("org_id")
+        dry_run     = payload.get("dry_run", True)  # default safe
+
+        if not rule_id:
+            return {
+                "status":  "skipped",
+                "message": "No rule_id in payload - nothing to remediate.",
+                "payload": payload,
+            }
+
+        engine = RemediationEngine(dry_run=dry_run)
+        return await engine.execute_rollback(
+            rule_id=rule_id,
+            resource_id=resource_id,
+            org_id=org_id,
+        )
+
+    acknowledged_types = {"policy_change", "account_delete", "mfa_bypass"}
+    if action_type in acknowledged_types:
+        return {
+            "status":      "acknowledged",
+            "action_type": action_type,
+            "message":     f"Action '{action_type}' recorded. Manual follow-up required.",
+            "payload":     payload,
+        }
+
+    return {
+        "status":      "completed",
+        "action_type": action_type,
+        "message":     f"Workflow action '{action_type}' executed.",
+        "payload":     payload,
+    }

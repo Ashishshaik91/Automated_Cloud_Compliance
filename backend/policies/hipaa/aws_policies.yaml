@@ -10,7 +10,7 @@ policies:
     resource_type: s3_bucket
     framework: hipaa
     severity: critical
-    opa_package: compliance.hipaa.s3
+    opa_package: "compliance.generic"
     rules:
       - field: encryption_enabled
         operator: is_true
@@ -23,7 +23,7 @@ policies:
     resource_type: s3_bucket
     framework: hipaa
     severity: critical
-    opa_package: compliance.hipaa.s3
+    opa_package: "compliance.generic"
     rules:
       - field: public_access_blocked
         operator: is_true
@@ -36,7 +36,7 @@ policies:
     resource_type: cloudtrail
     framework: hipaa
     severity: critical
-    opa_package: compliance.hipaa.cloudtrail
+    opa_package: "compliance.generic"
     rules:
       - field: is_logging
         operator: is_true
@@ -49,7 +49,7 @@ policies:
     resource_type: iam_user
     framework: hipaa
     severity: high
-    opa_package: compliance.hipaa.iam
+    opa_package: "compliance.generic"
     rules:
       - field: mfa_enabled
         operator: is_true
@@ -62,7 +62,7 @@ policies:
     resource_type: rds_instance
     framework: hipaa
     severity: critical
-    opa_package: compliance.hipaa.rds
+    opa_package: "compliance.generic"
     rules:
       - field: storage_encrypted
         operator: is_true
@@ -75,7 +75,7 @@ policies:
     resource_type: s3_bucket
     framework: hipaa
     severity: medium
-    opa_package: compliance.hipaa.s3
+    opa_package: "compliance.generic"
     rules:
       - field: versioning_enabled
         operator: is_true

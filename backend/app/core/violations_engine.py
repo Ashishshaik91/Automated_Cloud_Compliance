@@ -14,10 +14,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 import structlog
-from sqlalchemy import select, update
+from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.violations import Violation, ViolationRule
+from app.models.compliance import ComplianceCheck, ScanResult, CloudAccount
 
 logger = structlog.get_logger(__name__)
 
@@ -173,79 +174,8 @@ RULES: list[dict[str, Any]] = [
 ]
 
 # ---------------------------------------------------------------------------
-# Simulated resource states — drives which violations fire
+# Simulated data removed in favor of live queries
 # ---------------------------------------------------------------------------
-
-_SIMULATED_VIOLATIONS: list[dict[str, Any]] = [
-    # S3 public bucket
-    {"rule_id": "AWS-S3-001",  "resource_id": "pii-production-lake",  "resource_type": "s3",
-     "account_id": "123456789012", "cloud_provider": "aws",
-     "details": {"acl": "public-read", "region": "us-east-1"}},
-    {"rule_id": "AWS-S3-001",  "resource_id": "analytics-public-exports", "resource_type": "s3",
-     "account_id": "123456789012", "cloud_provider": "aws",
-     "details": {"policy": "PublicRead", "region": "us-west-2"}},
-    # Open security group
-    {"rule_id": "AWS-SG-001",  "resource_id": "sg-0a1b2c3d4e5f6a7b8", "resource_type": "security_group",
-     "account_id": "123456789012", "cloud_provider": "aws",
-     "details": {"port": "0-65535", "cidr": "0.0.0.0/0"}},
-    # Unencrypted EBS
-    {"rule_id": "AWS-EBS-001", "resource_id": "vol-0123456789abcdef0", "resource_type": "ebs_volume",
-     "account_id": "123456789012", "cloud_provider": "aws",
-     "details": {"size_gb": 500, "region": "eu-west-1"}},
-    # Root no MFA
-    {"rule_id": "AWS-IAM-001", "resource_id": "root",                  "resource_type": "iam_root",
-     "account_id": "123456789012", "cloud_provider": "aws",
-     "details": {"mfa_enabled": False}},
-    # Wildcard IAM
-    {"rule_id": "AWS-IAM-002", "resource_id": "arn:aws:iam::123456789012:policy/DevFullAccess",
-     "resource_type": "iam_policy", "account_id": "123456789012", "cloud_provider": "aws",
-     "details": {"action": "*", "resource": "*"}},
-    # Stale IAM key
-    {"rule_id": "AWS-IAM-003", "resource_id": "AKIAIOSFODNN7EXAMPLE", "resource_type": "iam_access_key",
-     "account_id": "123456789012", "cloud_provider": "aws",
-     "details": {"days_since_rotation": 127, "username": "deploy-bot"}},
-    # CloudTrail off
-    {"rule_id": "AWS-CT-001",  "resource_id": "cloudtrail-eu-west-1",  "resource_type": "cloudtrail",
-     "account_id": "123456789012", "cloud_provider": "aws",
-     "details": {"region": "eu-west-1", "enabled": False}},
-    # GuardDuty off
-    {"rule_id": "AWS-GD-001",  "resource_id": "guardduty-ap-southeast-1", "resource_type": "guardduty",
-     "account_id": "123456789012", "cloud_provider": "aws",
-     "details": {"region": "ap-southeast-1", "status": "disabled"}},
-    # Public RDS
-    {"rule_id": "AWS-RDS-001", "resource_id": "prod-db-mysql",         "resource_type": "rds_instance",
-     "account_id": "123456789012", "cloud_provider": "aws",
-     "details": {"engine": "mysql", "publicly_accessible": True}},
-    # IMDSv1
-    {"rule_id": "AWS-EC2-001", "resource_id": "i-0abcdef1234567890",   "resource_type": "ec2_instance",
-     "account_id": "123456789012", "cloud_provider": "aws",
-     "details": {"imds_version": "v1", "instance_type": "t3.large"}},
-    # Azure HTTP storage
-    {"rule_id": "AZ-ST-001",   "resource_id": "stgaccountprodeurwest",  "resource_type": "az_storage",
-     "account_id": "sub-0001-prod", "cloud_provider": "azure",
-     "details": {"https_only": False}},
-    # Azure NSG
-    {"rule_id": "AZ-NSG-001",  "resource_id": "nsg-prod-frontend",     "resource_type": "az_nsg",
-     "account_id": "sub-0001-prod", "cloud_provider": "azure",
-     "details": {"rule": "AllowAnyInbound", "priority": 100}},
-    # GCP public GCS
-    {"rule_id": "GCP-GCS-001", "resource_id": "gcs-ml-training-data",  "resource_type": "gcs_bucket",
-     "account_id": "proj-frontend-prod", "cloud_provider": "gcp",
-     "details": {"iam_public": True, "uniform_access": False}},
-    # GCP firewall open
-    {"rule_id": "GCP-FW-001",  "resource_id": "fw-allow-all-ingress",  "resource_type": "gcp_firewall",
-     "account_id": "proj-frontend-prod", "cloud_provider": "gcp",
-     "details": {"source_ranges": ["0.0.0.0/0"], "ports": ["all"]}},
-    # Generic TLS
-    {"rule_id": "GEN-TLS-001", "resource_id": "api.internal.corp",     "resource_type": "service_endpoint",
-     "account_id": "corp-infra", "cloud_provider": "generic",
-     "details": {"tls_versions": ["1.0", "1.1", "1.2"]}},
-    # Generic MFA
-    {"rule_id": "GEN-MFA-001", "resource_id": "console-access-policy",  "resource_type": "iam_policy",
-     "account_id": "corp-infra", "cloud_provider": "generic",
-     "details": {"mfa_required": False, "affected_users": 14}},
-]
-
 
 def _make_urn(cloud_provider: str, account_id: str, resource_type: str, resource_id: str) -> str:
     """Build a normalised resource URN for cross-module correlation."""
@@ -272,55 +202,69 @@ async def seed_violation_rules(db: AsyncSession) -> None:
 
 async def run_violations_engine(db: AsyncSession) -> int:
     """
-    Evaluate simulated resource states against rules.
+    Evaluate actual failed compliance checks against rules.
     Upserts violations; returns count of newly created rows.
     """
+    # 1. Clean up old data to prevent stale findings
+    await db.execute(delete(Violation))
+    await db.flush()
+
     rule_map: dict[str, ViolationRule] = {}
-    for r in RULES:
-        row = (await db.execute(
-            select(ViolationRule).where(ViolationRule.rule_id == r["rule_id"])
-        )).scalar_one_or_none()
-        if row:
-            rule_map[r["rule_id"]] = row
+    for row in (await db.execute(select(ViolationRule))).scalars():
+        rule_map[row.rule_id] = row
 
     created = 0
-    for v in _SIMULATED_VIOLATIONS:
-        rule = rule_map.get(v["rule_id"])
-        if not rule or not rule.enabled:
+
+    # 2. Query live failed compliance checks
+    stmt = (
+        select(ComplianceCheck, ScanResult, CloudAccount)
+        .join(ScanResult, ComplianceCheck.scan_id == ScanResult.id)
+        .join(CloudAccount, ScanResult.account_id == CloudAccount.id)
+        .where(ComplianceCheck.status == "fail")
+    )
+    
+    results = await db.execute(stmt)
+
+    for check, scan, account in results:
+        rule = rule_map.get(check.policy_id)
+        
+        # Dynamically support custom policies
+        if not rule:
+            rule = ViolationRule(
+                rule_id=check.policy_id,
+                name=check.policy_name,
+                description=f"Auto-generated rule for {check.policy_id}",
+                category="custom",
+                severity=check.severity,
+                provider=account.provider,
+            )
+            db.add(rule)
+            await db.flush()
+            rule_map[check.policy_id] = rule
+
+        if not rule.enabled:
             continue
 
         urn = _make_urn(
-            v["cloud_provider"], v.get("account_id", "unknown"),
-            v["resource_type"], v["resource_id"]
+            account.provider, account.account_id,
+            check.resource_type or "unknown", check.resource_id or "unknown"
         )
 
-        existing = (await db.execute(
-            select(Violation).where(Violation.resource_urn == urn)
-        )).scalar_one_or_none()
-
-        if existing:
-            # Refresh detection timestamp so periodic runs update the record
-            await db.execute(
-                update(Violation)
-                .where(Violation.resource_urn == urn)
-                .values(detected_at=datetime.now(timezone.utc))
-            )
-            continue
-
         db.add(Violation(
-            rule_id=v["rule_id"],
+            rule_id=check.policy_id,
             resource_urn=urn,
-            resource_id=v["resource_id"],
-            resource_type=v["resource_type"],
-            account_id=v.get("account_id"),
-            cloud_provider=v["cloud_provider"],
+            resource_id=check.resource_id or "unknown",
+            resource_type=check.resource_type or "unknown",
+            account_id=account.account_id,
+            cloud_provider=account.provider,
             severity=rule.severity,
             status="open",
-            details=v.get("details"),
-            remediation_hint=rule.remediation,
+            details=check.details,
+            remediation_hint=check.remediation_hint or rule.remediation,
         ))
         created += 1
 
     await db.flush()
-    logger.info("Violations engine run complete", new=created, total=len(_SIMULATED_VIOLATIONS))
+    logger.info("Violations engine run complete", new=created)
     return created
+

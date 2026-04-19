@@ -165,6 +165,31 @@ async def execute_approved_request(
         )
         req.status = ApprovalStatus.EXECUTED
         req.execution_result = {"status": "success", "result": result}
+
+        # Auto-resolve the matching violation so the dashboard reflects immediately
+        if req.action_type == "remediation":
+            payload = req.action_payload or {}
+            rule_id     = payload.get("rule_id", "")
+            resource_id = payload.get("resource_id", "")
+            if rule_id and resource_id:
+                from app.models.violations import Violation
+                from sqlalchemy import update as sa_update
+                await db.execute(
+                    sa_update(Violation)
+                    .where(
+                        Violation.rule_id    == rule_id,
+                        Violation.resource_id == resource_id,
+                        Violation.status     == "open",
+                    )
+                    .values(
+                        status      = "resolved",
+                        resolved_at = datetime.now(timezone.utc),
+                    )
+                )
+                logger.info(
+                    "Violation auto-resolved after workflow execution",
+                    rule_id=rule_id, resource_id=resource_id,
+                )
     except Exception as e:
         req.execution_result = {"status": "error", "error": str(e)}
         logger.error("Request execution failed", request_id=req.id, error=str(e))

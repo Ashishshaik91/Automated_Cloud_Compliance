@@ -1,37 +1,46 @@
 name: "OWASP Top 10"
 policies:
-  - id: owasp-waf-enabled
-    name: "WAF Enabled for APIs (A1:2021)"
-    resource_type: "API Gateway"
-    opa_package: "compliance.owasp.api_gateway"
+  - id: owasp-s3-public-exposure
+    name: "Sensitive Data Publicly Exposed (A01:2021)"
+    resource_type: "s3_bucket"
+    opa_package: "compliance.generic"
     severity: "critical"
     rules:
-      - field: "waf_enabled"
+      - field: "public_access_blocked"
         operator: "is_true"
 
-  - id: owasp-tls-version
-    name: "TLS 1.2+ Only (A2:2021)"
-    resource_type: "Load Balancer"
-    opa_package: "compliance.owasp.lb"
+  - id: owasp-s3-encryption
+    name: "Cryptographic Failures - Unencrypted Storage (A02:2021)"
+    resource_type: "s3_bucket"
+    opa_package: "compliance.generic"
     severity: "high"
     rules:
-      - field: "tls_1_2_plus"
+      - field: "encryption_enabled"
         operator: "is_true"
 
-  - id: owasp-cors-strict
-    name: "Restrictive CORS (A5:2021)"
-    resource_type: "API Gateway"
-    opa_package: "compliance.owasp.api_gateway_cors"
-    severity: "medium"
+  - id: owasp-iam-no-mfa
+    name: "Broken Authentication - No MFA (A07:2021)"
+    resource_type: "iam_user"
+    opa_package: "compliance.generic"
+    severity: "critical"
     rules:
-      - field: "cors_restrictive"
+      - field: "mfa_enabled"
         operator: "is_true"
 
-  - id: owasp-log-injection
-    name: "Log Integrity Monitoring (A9:2021)"
-    resource_type: "CloudTrail"
-    opa_package: "compliance.owasp.cloudtrail"
+  - id: owasp-cloudtrail-logging
+    name: "Security Logging & Monitoring Failures (A09:2021)"
+    resource_type: "cloudtrail"
+    opa_package: "compliance.generic"
     severity: "high"
     rules:
-      - field: "log_integrity_monitoring"
+      - field: "is_logging"
         operator: "is_true"
+
+  - id: owasp-ec2-public-ip
+    name: "Insecure Design - Public EC2 Exposure (A04:2021)"
+    resource_type: "ec2_instance"
+    opa_package: "compliance.generic"
+    severity: "high"
+    rules:
+      - field: "is_public"
+        operator: "is_false"

@@ -11,7 +11,7 @@ policies:
     resource_type: s3_bucket
     framework: pci_dss
     severity: critical
-    opa_package: compliance.pci_dss.s3
+    opa_package: "compliance.generic"
     rules:
       - field: encryption_enabled
         operator: is_true
@@ -24,7 +24,7 @@ policies:
     resource_type: s3_bucket
     framework: pci_dss
     severity: critical
-    opa_package: compliance.pci_dss.s3
+    opa_package: "compliance.generic"
     rules:
       - field: public_access_blocked
         operator: is_true
@@ -37,7 +37,7 @@ policies:
     resource_type: cloudtrail
     framework: pci_dss
     severity: critical
-    opa_package: compliance.pci_dss.cloudtrail
+    opa_package: "compliance.generic"
     rules:
       - field: is_logging
         operator: is_true
@@ -49,7 +49,7 @@ policies:
     resource_type: cloudtrail
     framework: pci_dss
     severity: high
-    opa_package: compliance.pci_dss.cloudtrail
+    opa_package: "compliance.generic"
     rules:
       - field: log_file_validation
         operator: is_true
@@ -62,7 +62,7 @@ policies:
     resource_type: iam_user
     framework: pci_dss
     severity: critical
-    opa_package: compliance.pci_dss.iam
+    opa_package: "compliance.generic"
     rules:
       - field: mfa_enabled
         operator: is_true
@@ -75,7 +75,7 @@ policies:
     resource_type: rds_instance
     framework: pci_dss
     severity: critical
-    opa_package: compliance.pci_dss.rds
+    opa_package: "compliance.generic"
     rules:
       - field: storage_encrypted
         operator: is_true
@@ -88,7 +88,7 @@ policies:
     resource_type: rds_instance
     framework: pci_dss
     severity: critical
-    opa_package: compliance.pci_dss.rds
+    opa_package: "compliance.generic"
     rules:
       - field: publicly_accessible
         operator: is_false

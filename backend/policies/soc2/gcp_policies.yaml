@@ -9,7 +9,7 @@ policies:
     resource_type: gcs_bucket
     framework: soc2
     severity: high
-    opa_package: compliance.soc2.gcs
+    opa_package: "compliance.generic"
     rules:
       - field: public_access_blocked
         operator: is_true
@@ -22,7 +22,7 @@ policies:
     resource_type: gcs_bucket
     framework: soc2
     severity: medium
-    opa_package: compliance.soc2.gcs
+    opa_package: "compliance.generic"
     rules:
       - field: uniform_bucket_level_access
         operator: is_true
@@ -35,7 +35,7 @@ policies:
     resource_type: gcp_compute_instance
     framework: soc2
     severity: medium
-    opa_package: compliance.soc2.gcp_compute
+    opa_package: "compliance.generic"
     rules:
       - field: shielded_vm
         operator: is_true
@@ -48,7 +48,7 @@ policies:
     resource_type: gcp_cloud_sql
     framework: soc2
     severity: high
-    opa_package: compliance.soc2.gcp_sql
+    opa_package: "compliance.generic"
     rules:
       - field: ip_configuration_require_ssl
         operator: is_true
@@ -61,7 +61,7 @@ policies:
     resource_type: gcp_cloud_sql
     framework: soc2
     severity: medium
-    opa_package: compliance.soc2.gcp_sql
+    opa_package: "compliance.generic"
     rules:
       - field: backup_enabled
         operator: is_true
@@ -74,7 +74,7 @@ policies:
     resource_type: gcp_iam_policy
     framework: soc2
     severity: critical
-    opa_package: compliance.soc2.gcp_iam
+    opa_package: "compliance.generic"
     rules:
       - field: has_public_bindings
         operator: is_false

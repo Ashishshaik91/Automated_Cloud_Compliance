@@ -44,6 +44,10 @@ COPY app/ ./app/
 RUN mkdir -p ./policies
 COPY policies/ ./policies/
 
+# Copy remediation runbooks
+RUN mkdir -p ./runbooks
+COPY runbooks/ ./runbooks/
+
 # Copy Alembic files
 COPY alembic.ini .
 COPY alembic/ ./alembic/

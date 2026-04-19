@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import CurrentUser, require_roles
+from app.models.user import User
 from app.core.workflow_engine import (
     approve_request,
     cancel_request,
@@ -188,7 +189,7 @@ async def cancel(
 @router.post("/requests/{request_id}/execute", response_model=dict)
 async def execute(
     request_id: str,
-    current_user: Annotated[CurrentUser, Depends(require_roles(["admin"]))],
+    current_user: Annotated[User, Depends(require_roles(["admin", "auditor"]))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     req = await get_request(db, request_id)

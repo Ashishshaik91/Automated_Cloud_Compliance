@@ -4,11 +4,9 @@
 # Note: Ensure you run `terraform init` before `terraform apply`
 
 provider "google" {
-  # The GCP_PROJECT_ID from your .env file
-  project = "compliance-reader" 
-  region  = "us-central1"
-  # This automatically uses the GOOGLE_APPLICATION_CREDENTIALS 
-  # environment variable we will inject during deployment using your .json file
+  project     = "compliance-reader"
+  region      = "us-central1"
+  credentials = "../secrets/compliance-reader-9818c46a758f.json"
 }
 
 # Generate a random ID to prevent GCS bucket name collisions
@@ -22,7 +20,7 @@ resource "google_storage_bucket" "vulnerable_gcs_bucket" {
   name                        = "compliance-demo-gcs-${random_id.gcp_bucket_suffix.hex}"
   location                    = "US"
   force_destroy               = true
-  uniform_bucket_level_access = false
+  uniform_bucket_level_access = true   # org policy enforces this; violation detected via public_access_prevention
   public_access_prevention    = "inherited"
 }
 

@@ -9,7 +9,7 @@ policies:
     resource_type: azure_storage_account
     framework: soc2
     severity: high
-    opa_package: compliance.soc2.azure_storage
+    opa_package: "compliance.generic"
     rules:
       - field: allow_blob_public_access
         operator: is_false
@@ -22,7 +22,7 @@ policies:
     resource_type: azure_storage_account
     framework: soc2
     severity: high
-    opa_package: compliance.soc2.azure_storage
+    opa_package: "compliance.generic"
     rules:
       - field: encryption_enabled
         operator: is_true
@@ -35,7 +35,7 @@ policies:
     resource_type: azure_storage_account
     framework: soc2
     severity: medium
-    opa_package: compliance.soc2.azure_storage
+    opa_package: "compliance.generic"
     rules:
       - field: https_only
         operator: is_true
@@ -48,7 +48,7 @@ policies:
     resource_type: azure_sql_server
     framework: soc2
     severity: high
-    opa_package: compliance.soc2.azure_sql
+    opa_package: "compliance.generic"
     rules:
       - field: public_network_access
         operator: is_false

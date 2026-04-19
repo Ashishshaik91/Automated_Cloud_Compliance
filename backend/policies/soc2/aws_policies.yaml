@@ -10,7 +10,7 @@ policies:
     resource_type: iam_user
     framework: soc2
     severity: high
-    opa_package: compliance.soc2.iam
+    opa_package: "compliance.generic"
     rules:
       - field: mfa_enabled
         operator: is_true
@@ -23,7 +23,7 @@ policies:
     resource_type: s3_bucket
     framework: soc2
     severity: high
-    opa_package: compliance.soc2.s3
+    opa_package: "compliance.generic"
     rules:
       - field: public_access_blocked
         operator: is_true
@@ -36,7 +36,7 @@ policies:
     resource_type: cloudtrail
     framework: soc2
     severity: high
-    opa_package: compliance.soc2.cloudtrail
+    opa_package: "compliance.generic"
     rules:
       - field: is_logging
         operator: is_true
@@ -49,7 +49,7 @@ policies:
     resource_type: rds_instance
     framework: soc2
     severity: medium
-    opa_package: compliance.soc2.rds
+    opa_package: "compliance.generic"
     rules:
       - field: multi_az
         operator: is_true
@@ -62,7 +62,7 @@ policies:
     resource_type: rds_instance
     framework: soc2
     severity: high
-    opa_package: compliance.soc2.rds
+    opa_package: "compliance.generic"
     rules:
       - field: publicly_accessible
         operator: is_false
@@ -75,7 +75,7 @@ policies:
     resource_type: s3_bucket
     framework: soc2
     severity: high
-    opa_package: compliance.soc2.s3
+    opa_package: "compliance.generic"
     rules:
       - field: encryption_enabled
         operator: is_true

@@ -112,3 +112,22 @@ AdminUser = Annotated[User, Depends(require_admin)]
 AuditorUser = Annotated[User, Depends(_require_role("auditor"))]
 DevUser = Annotated[User, Depends(_require_role("dev"))]
 ViewerUser = Annotated[User, Depends(_require_role("viewer"))]  # any authenticated user
+
+
+def require_roles(allowed_roles: list[str]):
+    """
+    Public factory: returns a dependency that allows only users whose role
+    is in the given list.  Used by the workflows router for admin-only execute.
+
+    Usage:
+        current_user: Annotated[User, Depends(require_roles(["admin"]))] = ...
+    """
+    async def _inner(current_user: Annotated[User, Depends(get_current_user)]) -> User:
+        if current_user.role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Requires one of roles: {allowed_roles}. You have '{current_user.role}'.",
+            )
+        return current_user
+
+    return _inner

@@ -2,36 +2,46 @@ name: "CIS Benchmarks"
 policies:
   - id: cis-root-mfa
     name: "Avoid Root usage & ensure MFA"
-    resource_type: "IAM Root"
-    opa_package: "compliance.cis.iam_root"
+    resource_type: "iam_user"
+    opa_package: "compliance.generic"
     severity: "critical"
     rules:
       - field: "mfa_enabled"
         operator: "is_true"
 
-  - id: cis-iam-password
-    name: "Strong Password Policy"
-    resource_type: "IAM Policy"
-    opa_package: "compliance.cis.iam_policy"
+  - id: cis-iam-no-active-keys
+    name: "No Excessive Active Access Keys"
+    resource_type: "iam_user"
+    opa_package: "compliance.generic"
     severity: "high"
     rules:
-      - field: "strong_password"
+      - field: "active_key_count"
+        operator: "equals"
+        value: 0
+
+  - id: cis-s3-encryption
+    name: "S3 Bucket Encryption Enabled"
+    resource_type: "s3_bucket"
+    opa_package: "compliance.generic"
+    severity: "high"
+    rules:
+      - field: "encryption_enabled"
         operator: "is_true"
 
-  - id: cis-sg-ssh-open
-    name: "No Open SSH to 0.0.0.0/0"
-    resource_type: "Security Group"
-    opa_package: "compliance.cis.sg"
+  - id: cis-s3-public-access
+    name: "S3 Bucket Public Access Blocked"
+    resource_type: "s3_bucket"
+    opa_package: "compliance.generic"
     severity: "critical"
     rules:
-      - field: "ssh_open"
-        operator: "is_false"
+      - field: "public_access_blocked"
+        operator: "is_true"
 
-  - id: cis-storage-encryption
-    name: "Storage Account Encrypted"
-    resource_type: "Storage Blob"
-    opa_package: "compliance.cis.storage"
+  - id: cis-cloudtrail-log-validation
+    name: "CloudTrail Log File Validation"
+    resource_type: "cloudtrail"
+    opa_package: "compliance.generic"
     severity: "high"
     rules:
-      - field: "is_encrypted"
+      - field: "log_file_validation"
         operator: "is_true"

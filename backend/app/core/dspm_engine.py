@@ -25,10 +25,12 @@ from datetime import datetime, timezone
 from typing import Any
 
 import structlog
-from sqlalchemy import select, update
+from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.dspm import DSPMFinding, risk_score_to_level
+from app.models.compliance import CloudAccount
+from app.connectors.aws_connector import AWSConnector
 
 logger = structlog.get_logger(__name__)
 
@@ -79,155 +81,8 @@ def _compute_threat_intel_boost(
 
 
 # ---------------------------------------------------------------------------
-# Simulated data store inventory
+# Simulated data store inventory removed in favor of live queries
 # ---------------------------------------------------------------------------
-_DATA_STORES: list[dict[str, Any]] = [
-    # ── AWS S3 ──────────────────────────────────────────────────────────
-    {
-        "data_store_id":   "pii-production-lake",
-        "data_store_name": "S3 PII Production Lake",
-        "data_store_type": "s3",
-        "cloud_provider":  "aws",
-        "account_id":      "123456789012",
-        "region":          "us-east-1",
-        "classifications": "PII,PCI",
-        "sensitivity":     "critical",
-        "public_access":   True,
-        "encryption_status": "partial",
-        "record_count":    4_200_000,
-        "owner":           "data-engineering@corp.internal",
-    },
-    {
-        "data_store_id":   "analytics-public-exports",
-        "data_store_name": "S3 Analytics Public Exports",
-        "data_store_type": "s3",
-        "cloud_provider":  "aws",
-        "account_id":      "123456789012",
-        "region":          "us-west-2",
-        "classifications": "CONFIDENTIAL",
-        "sensitivity":     "high",
-        "public_access":   True,
-        "encryption_status": "unencrypted",
-        "record_count":    890_000,
-        "owner":           "analytics-team@corp.internal",
-    },
-    {
-        "data_store_id":   "s3-audit-logs-archive",
-        "data_store_name": "S3 Audit Logs Archive",
-        "data_store_type": "s3",
-        "cloud_provider":  "aws",
-        "account_id":      "123456789012",
-        "region":          "us-east-1",
-        "classifications": "CONFIDENTIAL",
-        "sensitivity":     "medium",
-        "public_access":   False,
-        "encryption_status": "encrypted",
-        "record_count":    12_000_000,
-        "owner":           "security-team@corp.internal",
-    },
-    # ── AWS RDS ─────────────────────────────────────────────────────────
-    {
-        "data_store_id":   "prod-db-mysql",
-        "data_store_name": "RDS prod-db-mysql",
-        "data_store_type": "rds",
-        "cloud_provider":  "aws",
-        "account_id":      "123456789012",
-        "region":          "us-east-1",
-        "classifications": "PHI,HIPAA",
-        "sensitivity":     "critical",
-        "public_access":   True,
-        "encryption_status": "encrypted",
-        "record_count":    1_100_000,
-        "owner":           "backend-team@corp.internal",
-    },
-    {
-        "data_store_id":   "rds-reporting-replica",
-        "data_store_name": "RDS Reporting Replica",
-        "data_store_type": "rds",
-        "cloud_provider":  "aws",
-        "account_id":      "123456789012",
-        "region":          "eu-west-1",
-        "classifications": "CONFIDENTIAL",
-        "sensitivity":     "high",
-        "public_access":   False,
-        "encryption_status": "encrypted",
-        "record_count":    560_000,
-        "owner":           "reporting-team@corp.internal",
-    },
-    # ── Azure Blob ───────────────────────────────────────────────────────
-    {
-        "data_store_id":   "stgaccountprodeurwest",
-        "data_store_name": "Azure Storage stgaccountprodeurwest",
-        "data_store_type": "blob",
-        "cloud_provider":  "azure",
-        "account_id":      "sub-0001-prod",
-        "region":          "westeurope",
-        "classifications": "PII,CONFIDENTIAL",
-        "sensitivity":     "high",
-        "public_access":   False,
-        "encryption_status": "partial",
-        "record_count":    340_000,
-        "owner":           "platform-team@corp.internal",
-    },
-    {
-        "data_store_id":   "az-backup-store-01",
-        "data_store_name": "Azure Backup Store 01",
-        "data_store_type": "blob",
-        "cloud_provider":  "azure",
-        "account_id":      "sub-0001-prod",
-        "region":          "northeurope",
-        "classifications": "CONFIDENTIAL",
-        "sensitivity":     "medium",
-        "public_access":   False,
-        "encryption_status": "encrypted",
-        "record_count":    9_800_000,
-        "owner":           "infra-team@corp.internal",
-    },
-    # ── GCP GCS ─────────────────────────────────────────────────────────
-    {
-        "data_store_id":   "gcs-ml-training-data",
-        "data_store_name": "GCS ML Training Dataset",
-        "data_store_type": "gcs",
-        "cloud_provider":  "gcp",
-        "account_id":      "proj-frontend-prod",
-        "region":          "us-central1",
-        "classifications": "PII,CONFIDENTIAL",
-        "sensitivity":     "high",
-        "public_access":   True,
-        "encryption_status": "encrypted",
-        "record_count":    7_500_000,
-        "owner":           "ml-team@corp.internal",
-    },
-    {
-        "data_store_id":   "gcs-data-transfer-zone",
-        "data_store_name": "GCS Transient Data Transfer Zone",
-        "data_store_type": "gcs",
-        "cloud_provider":  "gcp",
-        "account_id":      "proj-frontend-prod",
-        "region":          "europe-west1",
-        "classifications": "UNKNOWN",
-        "sensitivity":     "low",
-        "public_access":   False,
-        "encryption_status": "encrypted",
-        "record_count":    None,
-        "owner":           None,
-    },
-    # ── GCP BigQuery ─────────────────────────────────────────────────────
-    {
-        "data_store_id":   "bq-customer-analytics",
-        "data_store_name": "BigQuery Customer Analytics",
-        "data_store_type": "bigquery",
-        "cloud_provider":  "gcp",
-        "account_id":      "proj-analytics",
-        "region":          "us",
-        "classifications": "PII,PCI",
-        "sensitivity":     "critical",
-        "public_access":   False,
-        "encryption_status": "encrypted",
-        "record_count":    22_000_000,
-        "owner":           "analytics-team@corp.internal",
-    },
-]
 
 
 def _make_dspm_urn(cloud_provider: str, account_id: str, store_type: str, store_id: str) -> str:
@@ -346,94 +201,122 @@ async def run_dspm_engine(
     enrich: bool = True,
 ) -> int:
     """
-    Upsert DSPMFinding rows from the simulated inventory.
+    Upsert DSPMFinding rows from live AWS environments.
     Optionally enriches with threat intel (enrich=True by default).
     Returns the number of newly created rows.
     """
+    # Clean up old data
+    await db.execute(delete(DSPMFinding))
+    await db.flush()
+
     created = 0
-    for store in _DATA_STORES:
-        urn = _make_dspm_urn(
-            store["cloud_provider"], store["account_id"],
-            store["data_store_type"], store["data_store_id"]
-        )
+    accounts = (await db.execute(select(CloudAccount).where(CloudAccount.is_active == True))).scalars().all()
 
-        base_score = _compute_base_score(
-            store["sensitivity"], store["public_access"], store["encryption_status"]
-        )
-
-        existing = (await db.execute(
-            select(DSPMFinding).where(DSPMFinding.data_store_urn == urn)
-        )).scalar_one_or_none()
-
-        if existing:
-            # Recalculate base score on update
-            if enrich:
-                boost, boost_reason = await enrich_with_threat_intel(existing, redis_client)
-                final_score = min(100.0, max(0.0, base_score + boost))
-                before_score = existing.risk_score
-                existing.risk_score             = final_score
-                existing.risk_level             = risk_score_to_level(final_score)
-                existing.last_scanned           = datetime.now(timezone.utc)
-                # Emit structured audit log for score enrichment
-                logger.info(
-                    "risk_score_enriched",
-                    finding_id=existing.id,
-                    before_score=before_score,
-                    threat_intel_boost=boost,
-                    boost_reason=boost_reason,
-                    after_score=final_score,
-                    enriched_at=datetime.now(timezone.utc).isoformat(),
+    for account in accounts:
+        if account.provider != "aws":
+            continue
+            
+        try:
+            conn = AWSConnector({
+                "id": account.id,
+                "account_id": account.account_id,
+                "region": account.region or "us-east-1",
+            })
+            
+            buckets = conn._get_s3_buckets()
+            rds_instances = conn._get_rds_instances()
+            
+            # Unify into stores list
+            live_stores = []
+            
+            for b in buckets:
+                name = b["resource_id"]
+                classifications = "CONFIDENTIAL"
+                sensitivity = "medium"
+                if "prod" in name.lower() or "pii" in name.lower():
+                    classifications = "PII,PCI"
+                    sensitivity = "critical"
+                elif "test" in name.lower() or "dev" in name.lower():
+                    classifications = "UNKNOWN"
+                    sensitivity = "low"
+                    
+                encrypted = "encrypted" if b["details"].get("encrypted", False) else "unencrypted"
+                
+                live_stores.append({
+                    "data_store_id": name,
+                    "data_store_name": f"S3 {name}",
+                    "data_store_type": "s3",
+                    "cloud_provider": "aws",
+                    "account_id": account.account_id,
+                    "region": account.region or "us-east-1",
+                    "classifications": classifications,
+                    "sensitivity": sensitivity,
+                    "public_access": not b["details"].get("public_access_blocked", True),
+                    "encryption_status": encrypted,
+                })
+                
+            for r in rds_instances:
+                name = r["resource_id"]
+                classifications = "PHI,HIPAA"
+                sensitivity = "high"
+                if "prod" in name.lower():
+                    sensitivity = "critical"
+                
+                encrypted = "encrypted" if r["details"].get("encrypted", False) else "unencrypted"
+                
+                live_stores.append({
+                    "data_store_id": name,
+                    "data_store_name": f"RDS {name}",
+                    "data_store_type": "rds",
+                    "cloud_provider": "aws",
+                    "account_id": account.account_id,
+                    "region": account.region or "us-east-1",
+                    "classifications": classifications,
+                    "sensitivity": sensitivity,
+                    "public_access": r["details"].get("publicly_accessible", False),
+                    "encryption_status": encrypted,
+                })
+                
+            for store in live_stores:
+                urn = _make_dspm_urn(
+                    store["cloud_provider"], store["account_id"],
+                    store["data_store_type"], store["data_store_id"]
                 )
-            else:
-                await db.execute(
-                    update(DSPMFinding)
-                    .where(DSPMFinding.data_store_urn == urn)
-                    .values(
-                        risk_score=base_score,
-                        risk_level=risk_score_to_level(base_score),
-                        last_scanned=datetime.now(timezone.utc),
-                    )
+
+                base_score = _compute_base_score(
+                    store["sensitivity"], store["public_access"], store["encryption_status"]
                 )
+
+                new_finding = DSPMFinding(
+                    data_store_urn     = urn,
+                    data_store_id      = store["data_store_id"],
+                    data_store_name    = store["data_store_name"],
+                    data_store_type    = store["data_store_type"],
+                    cloud_provider     = store["cloud_provider"],
+                    region             = store.get("region"),
+                    account_id         = store.get("account_id"),
+                    classifications    = store["classifications"],
+                    sensitivity        = store["sensitivity"],
+                    public_access      = store["public_access"],
+                    encryption_status  = store["encryption_status"],
+                    risk_score         = base_score,
+                    risk_level         = risk_score_to_level(base_score),
+                )
+                db.add(new_finding)
+                await db.flush()   # get ID for logging
+
+                if enrich:
+                    boost, boost_reason = await enrich_with_threat_intel(new_finding, redis_client)
+                    final_score = min(100.0, max(0.0, base_score + boost))
+                    new_finding.risk_score = final_score
+                    new_finding.risk_level = risk_score_to_level(final_score)
+
+                created += 1
+
+        except Exception as e:
+            logger.error(f"Failed to process DSPM for account {account.account_id}", error=str(e))
             continue
 
-        # Create new finding
-        new_finding = DSPMFinding(
-            data_store_urn     = urn,
-            data_store_id      = store["data_store_id"],
-            data_store_name    = store["data_store_name"],
-            data_store_type    = store["data_store_type"],
-            cloud_provider     = store["cloud_provider"],
-            region             = store.get("region"),
-            account_id         = store.get("account_id"),
-            classifications    = store["classifications"],
-            sensitivity        = store["sensitivity"],
-            public_access      = store["public_access"],
-            encryption_status  = store["encryption_status"],
-            record_count       = store.get("record_count"),
-            owner              = store.get("owner"),
-            risk_score         = base_score,
-            risk_level         = risk_score_to_level(base_score),
-        )
-        db.add(new_finding)
-        await db.flush()   # get ID for logging
-
-        if enrich:
-            boost, boost_reason = await enrich_with_threat_intel(new_finding, redis_client)
-            final_score = min(100.0, max(0.0, base_score + boost))
-            new_finding.risk_score = final_score
-            new_finding.risk_level = risk_score_to_level(final_score)
-            logger.info(
-                "risk_score_enriched",
-                finding_id=new_finding.id,
-                before_score=base_score,
-                threat_intel_boost=boost,
-                boost_reason=boost_reason,
-                after_score=final_score,
-                enriched_at=datetime.now(timezone.utc).isoformat(),
-            )
-
-        created += 1
-
     await db.flush()
-    logger.info("DSPM engine run complete", new=created, total=len(_DATA_STORES))
+    logger.info("DSPM engine run complete", new=created)
     return created

@@ -39,11 +39,18 @@ async def get_compliance_summary(
     )
     latest_scan = latest_scan_result.scalar_one_or_none()
 
-    # Average compliance score
-    avg_score_result = await db.execute(
-        select(func.avg(ScanResult.compliance_score))
+    # Live score: percentage of passing checks right now
+    pass_result = await db.execute(
+        select(func.count()).select_from(ComplianceCheck).where(
+            ComplianceCheck.status == "pass"
+        )
     )
-    avg_score = float(avg_score_result.scalar() or 0.0)
+    total_checks_result = await db.execute(
+        select(func.count()).select_from(ComplianceCheck)
+    )
+    passing_checks = pass_result.scalar() or 0
+    total_checks   = total_checks_result.scalar() or 1
+    avg_score = round(100.0 * passing_checks / total_checks, 2)
 
     # Critical failures
     crit_result = await db.execute(

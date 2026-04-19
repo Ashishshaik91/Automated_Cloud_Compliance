@@ -12,12 +12,16 @@ Set these in your .env file to override the defaults:
 import os
 
 import structlog
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import hash_password
 from app.models.user import User
+from app.models.org import Organization
 
 logger = structlog.get_logger(__name__)
+
+DEFAULT_ORG_NAME = "Default Organization"
 
 
 def _seed_users():
@@ -49,11 +53,42 @@ def _seed_users():
     ]
 
 
+async def _get_or_create_default_org(db: AsyncSession) -> Organization:
+    """Idempotent: returns the default org, creating it if it doesn't exist.
+    Uses INSERT ON CONFLICT DO NOTHING to handle concurrent workers safely.
+    """
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    stmt = pg_insert(Organization).values(
+        name=DEFAULT_ORG_NAME,
+        remediation_dry_run=True,
+    ).on_conflict_do_nothing(index_elements=["name"])
+    await db.execute(stmt)
+    await db.flush()
+
+    result = await db.execute(
+        select(Organization).where(Organization.name == DEFAULT_ORG_NAME)
+    )
+    org = result.scalar_one()
+    logger.info("Default organization ready", org_id=org.id)
+    return org
+
+
 async def seed_default_users(db: AsyncSession) -> None:
-    """Idempotent: only seeds users that don't already exist."""
+    """Idempotent: only seeds users that don't already exist.
+    All seeded users are assigned to the default organization so that
+    org-scoped features (e.g. approval workflows) work out of the box.
+    """
+    org = await _get_or_create_default_org(db)
+
     for data in _seed_users():
         existing = await User.get_by_email(db, data["email"])
         if existing:
+            # Backfill org_id if the user was seeded before this fix
+            if existing.organization_id is None:
+                existing.organization_id = org.id
+                await db.flush()
+                logger.info("Backfilled org_id for existing user", email=data["email"])
             continue
 
         user = User(
@@ -62,6 +97,7 @@ async def seed_default_users(db: AsyncSession) -> None:
             hashed_password=hash_password(data["password"]),
             role=data["role"],
             is_active=True,
+            organization_id=org.id,
         )
         db.add(user)
         logger.info("Seeded default user", email=data["email"], role=data["role"])

@@ -1,6 +1,8 @@
 # Cloud Compliance Platform
 
-A Docker-containerized SaaS platform for continuous multi-cloud compliance monitoring across AWS, Azure, and GCP. Provides a terminal-style TUI dashboard for managing security posture, framework compliance (PCI-DSS, HIPAA, GDPR, SOC 2, NIST, CIS, OWASP), data security, and misconfiguration violations.
+A Docker-containerized SaaS platform for **continuous multi-cloud compliance monitoring** across AWS, Azure, and GCP. Provides a terminal-style TUI dashboard for managing security posture, framework compliance (PCI-DSS, HIPAA, GDPR, SOC 2, NIST, CIS, OWASP), data security, and misconfiguration violations.
+
+All compliance scans, violation findings, and DSPM data security findings run against **live cloud infrastructure** — no simulated or dummy data.
 
 ---
 
@@ -9,8 +11,8 @@ A Docker-containerized SaaS platform for continuous multi-cloud compliance monit
 | Feature | Description |
 |---|---|
 | **TUI Dashboard** | Grid-based React interface with trend charts, real-time metrics, and a per-framework score ring |
-| **Violations Engine** | Rule-based configuration checks against OPA/Rego + YAML policies; 40+ rules across 8 frameworks |
-| **DSPM** | Sensitive-data discovery with classification (PII, PHI, PCI) and impact-based risk scoring |
+| **Violations Engine** | Queries live `ComplianceCheck` failures from the DB; dynamically supports custom user policies; auto-cleans stale findings on each refresh |
+| **DSPM** | Sensitive-data discovery from live AWS S3 buckets and RDS instances; name-based PII/PCI heuristic classification; per-account error isolation |
 | **Correlation Layer** | Intersects DSPM data risk with infrastructure violations to surface exploitable attack paths |
 | **Terraform Drift** | Ingests local/remote `.tfstate` to detect config drift against live cloud environments |
 | **Remediation Engine** | YAML runbooks with cloud-native SDK rollback; `dry_run` guardrails; per-rule automation gate |
@@ -26,7 +28,37 @@ A Docker-containerized SaaS platform for continuous multi-cloud compliance monit
 
 ## Feature Progression — April 2026
 
-### ✅ Multi-Account Org Hierarchy & RBAC Isolation
+### Live Violations Engine (Real Data Integration)
+
+The Violations Engine previously used a hardcoded `_SIMULATED_VIOLATIONS` list. It has been fully replaced with a live database query:
+
+- **Dynamic query**: fetches all `ComplianceCheck` records with `status == 'fail'` — joined to `ScanResult` + `CloudAccount` for provider/account context
+- **Custom policy support**: if a user-created policy produces a failure, the engine automatically creates a `ViolationRule` entry for it; no code changes required
+- **Clean refresh**: every run issues `DELETE FROM violations` before inserting — no stale or resolved violations persist
+- **URN normalisation**: violations are keyed by `<provider>://<account_id>/<resource_type>/<resource_id>` for cross-module correlation with DSPM
+- **Zero hardcoding**: the violation count tracks actual infrastructure failures in real time; adding or removing compliance checks is reflected immediately
+
+### Live DSPM Engine (Real Data Integration)
+
+The DSPM Engine previously used a hardcoded `_DATA_STORES` list of 10 simulated stores. It now queries live AWS environments:
+
+- **Account iteration**: loops over all active `CloudAccount` records and instantiates `AWSConnector` per account
+- **Live data sources**: calls `_get_s3_buckets()` and `_get_rds_instances()` — real bucket names, public-access flags, and encryption states from AWS
+- **Name-based heuristic classification** (replaces Amazon Macie for this environment):
+  - Bucket/instance name contains `prod` or `pii` → `PII,PCI` / sensitivity `critical`
+  - Name contains `test` or `dev` → `UNKNOWN` / sensitivity `low`
+  - All others → `CONFIDENTIAL` / sensitivity `medium`
+  - RDS instances → `PHI,HIPAA` / sensitivity `high` (or `critical` for `prod`)
+- **Per-account error isolation**: each account is wrapped in `try/except`; a failed connector (e.g. expired credentials) logs the error and skips to the next account without crashing the engine
+- **Clean refresh**: `DELETE FROM dspm_findings` on each run — no ghost entries from decommissioned buckets
+- **Threat intel intact**: VirusTotal and NVD CVE enrichment runs against the real bucket/instance names
+
+### Dashboard Stabilisation
+
+- **NO DATA bug fixed**: preliminary scans that completed with `total_checks == 0` were rendering as `NO DATA` tiles; the frontend now filters these out before rendering
+- **Trend graph history**: scan fetch limit raised from 20 → 200 so historical trend lines remain populated after frequent daily scans
+
+### Multi-Account Org Hierarchy & RBAC Isolation
 
 3-tier org isolation (`Admin → Auditor → Customer`) enforced at every layer:
 
@@ -38,7 +70,7 @@ A Docker-containerized SaaS platform for continuous multi-cloud compliance monit
 - **`last_login_at`** stamped on every login for CIS 1.3 inactive-credential detection (migration `0002`)
 - **`require_write_access()`**: auditor role is strictly read-only across all mutation endpoints
 
-### ✅ Threat Intelligence Enrichment
+###  Threat Intelligence Enrichment
 
 Three external feeds fanned out into DSPM findings and violation rows:
 
@@ -66,7 +98,7 @@ Three external feeds fanned out into DSPM findings and violation rows:
 
 ---
 
-### ✅ TOTP Multi-Factor Authentication
+### TOTP Multi-Factor Authentication
 
 Two-step login flow with authenticator-app TOTP (`pyotp`):
 
@@ -78,7 +110,7 @@ Two-step login flow with authenticator-app TOTP (`pyotp`):
 - **Backup codes**: 8 × 8-char uppercase codes, hashed with Argon2; consumed one-at-a-time and removed after use
 - **Migration `0003`**: adds `mfa_secret`, `mfa_enabled`, `mfa_backup_codes (JSON)`, `mfa_enrolled_at` columns to `users`
 
-### ✅ Compliance Score Engine
+### Compliance Score Engine
 
 Weighted scoring with grade bands and historical trends:
 
@@ -91,7 +123,7 @@ Weighted scoring with grade bands and historical trends:
 - **Celery Beat**: `daily-score-snapshot` runs at 00:05 UTC across all active orgs
 - **Migration `0004`**: creates `score_snapshots` and `account_score_cache` tables
 
-### ✅ Approval Workflows
+###  Approval Workflows
 
 4-eyes change-management gate for high-risk platform actions:
 
@@ -116,7 +148,7 @@ Weighted scoring with grade bands and historical trends:
 | `POST /requests/{id}/cancel` | Cancel (requester or admin only) |
 | `POST /requests/{id}/execute` | Execute approved action (admin only) |
 
-### ✅ WebSocket Real-Time Dashboard
+###  WebSocket Real-Time Dashboard
 
 Org-scoped live event feed via Redis pub/sub:
 
@@ -208,6 +240,7 @@ CloudCompliancePlatform/
 │   │   ├── schemas/          # Pydantic v2 schemas
 │   │   └── ws/               # WebSocket connection manager, router, publisher
 │   ├── alembic/versions/     # Migrations: 0001 org hierarchy · 0002 scoping · 0003 MFA · 0004 scores · 0005 workflows
+│   └── secrets/              # Remediation scripts: run_mfa.sh · fix_cloudtrail_and_iam.py · enable_mfa.py
 │   ├── policies/             # YAML compliance definitions
 │   └── tests/                # Pytest suite
 ├── frontend/                 # React 18 + Vite TUI
@@ -251,6 +284,26 @@ CloudCompliancePlatform/
 | **NIST** | CSF 2.0 | YAML |
 | **CIS** | Benchmarks v8 | YAML |
 | **OWASP** | Top 10 | YAML |
+
+---
+
+## Cloud Infrastructure Remediation
+
+The platform ships with executable remediation scripts (`secrets/`) that can be triggered via Terraform `null_resource` or run directly inside the backend container:
+
+| Script | Purpose |
+|---|---|
+| `run_mfa.sh` | Entrypoint: chains MFA + CloudTrail/IAM remediation scripts |
+| `enable_mfa.py` | Enables virtual MFA for demo IAM users |
+| `fix_cloudtrail_and_iam.py` | Deactivates stale IAM access keys; updates CloudTrail log-file validation and multi-region settings |
+
+> **Credential requirement**: CloudTrail updates (`cloudtrail:UpdateTrail`) require an IAM identity with administrative CloudTrail permissions. The `compliance-platform-reader` role is read-only and will receive `AccessDenied` for trail mutations — use AWS CloudShell or a privileged role for those calls.
+
+### Manual CloudTrail Fix (AWS CloudShell)
+
+```bash
+aws cloudtrail update-trail --name TrailTesting --is-multi-region-trail --enable-log-file-validation
+```
 
 ---
 

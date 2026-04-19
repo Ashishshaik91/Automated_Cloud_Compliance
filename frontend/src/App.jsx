@@ -12,7 +12,8 @@ import {
   Users, 
   LogOut,
   Palette,
-  Settings
+  Settings,
+  GitPullRequest
 } from 'lucide-react'
 import Dashboard from './pages/Dashboard'
 import Reports from './pages/Reports'
@@ -22,6 +23,7 @@ import Alerts from './pages/Alerts'
 import Accounts from './pages/Accounts'
 import Login from './pages/Login'
 import Admin from './pages/Admin'
+import Workflows from './pages/Workflows'
 
 // ─── Role helpers ──────────────────────────────────────────────────────────────
 
@@ -81,13 +83,14 @@ const StatusBar = ({ logout, role, theme, setTheme }) => {
   const badge = ROLE_BADGES[role] || ROLE_BADGES.viewer
 
   const navItems = [
-    { label: '01:Dash', to: '/dashboard', minRole: 'viewer' },
-    { label: '02:Scan', to: '/scans',     minRole: 'dev'    },
-    { label: '03:Repo', to: '/reports',   minRole: 'auditor' },
-    { label: '04:Pol',  to: '/policies',  minRole: 'dev'    },
-    { label: '05:Alrt', to: '/alerts',    minRole: 'dev'    },
-    { label: '06:Cloud',to: '/accounts',  minRole: 'dev'    },
-    { label: '07:Adm',  to: '/admin',     minRole: 'admin'  },
+    { label: '01:Dash', to: '/dashboard',  minRole: 'viewer'  },
+    { label: '02:Scan', to: '/scans',      minRole: 'dev'     },
+    { label: '03:Repo', to: '/reports',    minRole: 'auditor' },
+    { label: '04:Pol',  to: '/policies',   minRole: 'dev'     },
+    { label: '05:Alrt', to: '/alerts',     minRole: 'dev'     },
+    { label: '06:Cloud',to: '/accounts',   minRole: 'dev'     },
+    { label: '07:Wrkflw', to: '/workflows', minRole: 'dev'   },
+    { label: '08:Adm',  to: '/admin',      minRole: 'admin'  },
   ]
 
   const visibleItems = navItems.filter(item => ROLE_RANK[role] >= ROLE_RANK[item.minRole])
@@ -180,11 +183,12 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/scans"     element={<RoleRoute element={<Scans />}    minRole="dev"     userRole={role} />} />
-            <Route path="/reports"   element={<RoleRoute element={<Reports />}  minRole="auditor" userRole={role} />} />
-            <Route path="/policies"  element={<RoleRoute element={<Policies />} minRole="dev"     userRole={role} />} />
-            <Route path="/alerts"    element={<RoleRoute element={<Alerts />}   minRole="dev"     userRole={role} />} />
-            <Route path="/accounts"  element={<RoleRoute element={<Accounts />} minRole="dev"     userRole={role} />} />
+            <Route path="/scans"     element={<RoleRoute element={<Scans />}       minRole="dev"     userRole={role} />} />
+            <Route path="/reports"   element={<RoleRoute element={<Reports />}     minRole="auditor" userRole={role} />} />
+            <Route path="/policies"  element={<RoleRoute element={<Policies />}    minRole="dev"     userRole={role} />} />
+            <Route path="/alerts"    element={<RoleRoute element={<Alerts />}      minRole="dev"     userRole={role} />} />
+            <Route path="/accounts"  element={<RoleRoute element={<Accounts />}   minRole="dev"     userRole={role} />} />
+            <Route path="/workflows" element={<RoleRoute element={<Workflows />}  minRole="dev"     userRole={role} />} />
             <Route path="/admin"     element={<RoleRoute element={<Admin role={role} />} minRole="admin" userRole={role} />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

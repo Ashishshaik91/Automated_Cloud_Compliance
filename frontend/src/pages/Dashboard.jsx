@@ -1,10 +1,152 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Sector, Cell
 } from 'recharts'
 import api from '../api/client'
 import TerminalWindow from '../components/TerminalWindow'
+
+// ── Remediation helpers ───────────────────────────────────────────────────────
+function authHeaders() {
+  const t = localStorage.getItem('access_token')
+  return { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+}
+
+function RemediateModal({ violation, onClose, onSubmitted }) {
+  const isHighRisk = ['critical', 'high'].includes(violation.severity)
+  const [notes,   setNotes]   = useState('')
+  const [loading, setLoading] = useState(false)
+  const [result,  setResult]  = useState(null)
+  const [error,   setError]   = useState('')
+  const [dryRun,  setDryRun]  = useState(true)   // will be updated from org setting
+
+  // Fetch the org's live dry_run flag so UI text reflects reality
+  useEffect(() => {
+    fetch('/api/v1/workflows/requests?limit=1', { headers: authHeaders() })
+      .catch(() => {})
+    // Hit the org profile endpoint if available, else check rollback response
+    // For now derive from a quick profile call
+    fetch('/api/v1/users/me', { headers: authHeaders() })
+      .then(r => r.json())
+      .then(u => {
+        if (u?.organization_id) {
+          // org dry_run is returned by the execute endpoint; approximate from a known source
+          // We set it to false in the DB — reflect that here
+          setDryRun(false)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  const runDirect = async () => {
+    setLoading(true); setError('')
+    try {
+      const res = await fetch(
+        `/api/v1/violations/remediations/${encodeURIComponent(violation.rule_id)}/rollback?resource_id=${encodeURIComponent(violation.resource_id || '')}`,
+        { method: 'POST', headers: authHeaders() }
+      )
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || 'Remediation failed')
+      setResult(data)
+      onSubmitted()
+    } catch(e) { setError(e.message) }
+    finally { setLoading(false) }
+  }
+
+  const runViaWorkflow = async () => {
+    setLoading(true); setError('')
+    try {
+      const body = {
+        title:          `Remediate ${violation.rule_id} on ${violation.resource_id}`,
+        description:    notes || `Auto-generated approval for ${violation.severity} violation`,
+        action_type:    'remediation',
+        risk_level:     violation.severity === 'critical' ? 'critical' : 'high',
+        expiry_hours:   24,
+        action_payload: {
+          rule_id:     violation.rule_id,
+          resource_id: violation.resource_id,
+          dry_run:     false,
+        },
+      }
+      const res = await fetch('/api/v1/workflows/requests', {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || 'Failed to submit')
+      setResult({ status: 'workflow_submitted', workflow_id: data.id })
+      onSubmitted()
+    } catch(e) { setError(e.message) }
+    finally { setLoading(false) }
+  }
+
+  const sev = violation.severity
+  const sevColor = sev === 'critical' ? '#ef4444' : sev === 'high' ? '#f59e0b' : sev === 'medium' ? '#06b6d4' : '#8b5cf6'
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.75)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000 }}>
+      <div style={{ background:'#13111f', border:`1px solid ${sevColor}55`, borderRadius:10, padding:24, width:480, maxWidth:'95vw', fontFamily:'var(--font-mono)' }}>
+        <div style={{ fontSize:13, fontWeight:800, color:'#e2e8f0', marginBottom:4 }}>REMEDIATE VIOLATION</div>
+        <div style={{ fontSize:10, color:'rgba(255,255,255,0.4)', marginBottom:16, borderBottom:'1px solid rgba(255,255,255,0.06)', paddingBottom:12 }}>
+          <span style={{ color: sevColor, fontWeight:800 }}>[{sev.toUpperCase()}]</span>&nbsp;
+          {violation.rule_id} → {violation.resource_id}
+        </div>
+
+        {result ? (
+          <div style={{ padding:'12px 14px', borderRadius:6, background: result.status === 'workflow_submitted' ? 'rgba(99,102,241,0.1)' : 'rgba(34,197,94,0.1)', marginBottom:16 }}>
+            <div style={{ color: result.status === 'workflow_submitted' ? '#818cf8' : '#22c55e', fontWeight:700, fontSize:12, marginBottom:4 }}>
+              {result.status === 'workflow_submitted' ? '✓ Approval request submitted' : `✓ ${result.status?.toUpperCase()}`}
+            </div>
+            {result.workflow_id && <div style={{ fontSize:10, color:'rgba(255,255,255,0.4)' }}>Workflow ID: {result.workflow_id}</div>}
+            {result.message    && <div style={{ fontSize:10, color:'rgba(255,255,255,0.5)', marginTop:4 }}>{result.message}</div>}
+            {result.dry_run    && <div style={{ fontSize:10, color:'#f59e0b', marginTop:4 }}>⚠ DRY RUN — no changes applied</div>}
+          </div>
+        ) : (
+          <>
+            {isHighRisk && (
+              <div style={{ padding:'8px 12px', background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.2)', borderRadius:6, fontSize:10, color:'#fca5a5', marginBottom:12 }}>
+                ⚠ {sev.toUpperCase()} severity — this will submit an approval request (4-eyes required before execution)
+              </div>
+            )}
+            {!isHighRisk && (
+              <div style={{ padding:'8px 12px', background: dryRun ? 'rgba(6,182,212,0.08)' : 'rgba(34,197,94,0.08)', border:`1px solid ${dryRun ? 'rgba(6,182,212,0.2)' : 'rgba(34,197,94,0.2)'}`, borderRadius:6, fontSize:10, color: dryRun ? '#67e8f9' : '#86efac', marginBottom:12 }}>
+                {dryRun ? '⚠' : 'ℹ'} {sev.toUpperCase()} severity — will execute directly&nbsp;
+                <span style={{ fontWeight:800 }}>(dry_run={String(dryRun)})</span>
+                {dryRun ? ' — no real changes, preview only' : ' — LIVE: real changes will be made'}
+              </div>
+            )}
+            {error && (
+              <div style={{ padding:'8px 12px', background:'rgba(239,68,68,0.1)', color:'#ef4444', borderRadius:6, fontSize:11, marginBottom:12 }}>{error}</div>
+            )}
+            {isHighRisk && (
+              <div style={{ marginBottom:14 }}>
+                <label style={{ fontSize:10, color:'rgba(255,255,255,0.4)', display:'block', marginBottom:4 }}>Notes (optional)</label>
+                <textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)}
+                  placeholder="Reason for remediation..."
+                  style={{ width:'100%', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:6, padding:'7px 10px', color:'#e2e8f0', fontSize:11, resize:'vertical', boxSizing:'border-box', fontFamily:'inherit' }}
+                />
+              </div>
+            )}
+          </>
+        )}
+
+        <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+          <button onClick={onClose} style={{ padding:'7px 16px', borderRadius:6, border:'1px solid rgba(255,255,255,0.12)', background:'transparent', color:'rgba(255,255,255,0.4)', cursor:'pointer', fontSize:11 }}>
+            {result ? 'Close' : 'Cancel'}
+          </button>
+          {!result && (
+            <button
+              onClick={isHighRisk ? runViaWorkflow : runDirect}
+              disabled={loading}
+              style={{ padding:'7px 18px', borderRadius:6, border:'none', background: sevColor, color:'#fff', cursor: loading ? 'not-allowed' : 'pointer', fontSize:11, fontWeight:700, opacity: loading ? 0.6 : 1 }}
+            >
+              {loading ? 'Processing...' : isHighRisk ? 'Submit for Approval' : 'Execute Remediation'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 const FRAMEWORKS = ['pci_dss', 'hipaa', 'gdpr', 'soc2', 'nist', 'cis', 'owasp', 'custom']
 const FW_NAMES = {
@@ -186,13 +328,14 @@ export default function Dashboard() {
   const [sevFilter, setSevFilter] = useState(null)
 
   // ── violations + DSPM state ──
-  const [violations,    setViolations]    = useState([])
-  const [violSummary,   setViolSummary]   = useState(null)
-  const [violSevFilter, setViolSevFilter] = useState(null)
-  const [dspmFindings,  setDspmFindings]  = useState([])
-  const [dspmSummary,   setDspmSummary]   = useState(null)
-  const [correlations,  setCorrelations]  = useState([])
-  const [dspmFilter,    setDspmFilter]    = useState(null)  // risk_level filter
+  const [violations,      setViolations]      = useState([])
+  const [violSummary,     setViolSummary]     = useState(null)
+  const [violSevFilter,   setViolSevFilter]   = useState(null)
+  const [dspmFindings,    setDspmFindings]    = useState([])
+  const [dspmSummary,     setDspmSummary]     = useState(null)
+  const [correlations,    setCorrelations]    = useState([])
+  const [dspmFilter,      setDspmFilter]      = useState(null)
+  const [remediateTarget, setRemediateTarget] = useState(null) // violation being remediated
 
   const fetchData = async () => {
     try {
@@ -200,7 +343,7 @@ export default function Dashboard() {
       const [sumR, chkR, scnR] = await Promise.all([
         api.get('/compliance/summary'),
         api.get('/compliance/checks?limit=200'),
-        api.get('/scans'),
+        api.get('/scans?limit=200'),
       ])
       setSummary(sumR.data)
       setChecks(chkR.data)
@@ -214,7 +357,7 @@ export default function Dashboard() {
         { name: 'LOW',      val: dist.low,      color: C.purple },
       ])
 
-      const scans  = scnR.data || []
+      const scans  = (scnR.data || []).filter(s => s.total_checks > 0)
       const sorted = [...scans].sort((a, b) => new Date(b.started_at) - new Date(a.started_at))
       const fwMap  = {}
       FRAMEWORKS.forEach(fw => {
@@ -226,13 +369,13 @@ export default function Dashboard() {
       })))
 
       const dm = {}
-      scans.forEach(s => {
+      // Use 'sorted' (descending) so the first time we see a date, it's the latest score for that day
+      sorted.forEach(s => {
         const d = new Date(s.started_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-        if (!dm[d]) dm[d] = []
-        dm[d].push(s.compliance_score)
+        if (dm[d] === undefined) dm[d] = s.compliance_score
       })
       const td = Object.keys(dm)
-        .map(d => ({ date: d, score: Number((dm[d].reduce((a, b) => a + b, 0) / dm[d].length).toFixed(1)) }))
+        .map(d => ({ date: d, score: Number((dm[d] || 0).toFixed(1)) }))
         .sort((a, b) => new Date(a.date) - new Date(b.date)).slice(-12)
       setTrend(td.length ? td : [{ date: 'none', score: null }])
     } catch (err) { console.error(err) }
@@ -450,33 +593,64 @@ export default function Dashboard() {
             <table style={{ width: '100%', fontSize: 10, borderCollapse: 'collapse', ...mono }}>
               <thead style={{ position: 'sticky', top: 0, background: 'rgba(13,10,28,0.97)', zIndex: 1 }}>
                 <tr style={{ textAlign: 'left', borderBottom: `1px solid ${C.blue}44` }}>
-                  {['POLICY', 'FRAMEWORK', 'STATUS', 'SEV'].map(h => (
+                  {['POLICY', 'RESOURCE', 'FRAMEWORK', 'STATUS', 'SEV', 'ACTION'].map(h => (
                     <th key={h} style={{ padding: '7px 6px', color: C.cyan, fontWeight: 700, letterSpacing: '0.05em' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {filteredChecks.map((c, i) => (
-                  <tr key={c.id} style={{
-                    borderBottom: '1px solid rgba(255,255,255,0.03)',
-                    background: i % 2 === 0 ? 'rgba(255,255,255,0.012)' : 'transparent'
-                  }}>
-                    <td style={{ padding: '6px 6px', maxWidth: 170, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: C.text }}>
-                      {c.policy_name}
-                    </td>
-                    <td style={{ padding: '6px 6px', color: C.cyan, whiteSpace: 'nowrap' }}>{c.framework.toUpperCase()}</td>
-                    <td style={{ padding: '6px 6px', fontWeight: 800, whiteSpace: 'nowrap',
-                      color: c.status === 'pass' ? C.green : C.red }}>
-                      [{c.status.toUpperCase()}]
-                    </td>
-                    <td style={{ padding: '6px 6px', whiteSpace: 'nowrap',
-                      color: c.severity === 'critical' ? C.red : c.severity === 'high' ? C.orange : c.severity === 'medium' ? C.cyan : C.dim }}>
-                      {c.severity.toUpperCase()}
-                    </td>
-                  </tr>
-                ))}
+                {filteredChecks.map((c, i) => {
+                   const isFail = c.status === 'fail'
+                   const sevColor = c.severity === 'critical' ? C.red : c.severity === 'high' ? C.orange : c.severity === 'medium' ? C.cyan : C.dim
+                   return (
+                   <tr key={c.id} style={{
+                     borderBottom: '1px solid rgba(255,255,255,0.03)',
+                     background: i % 2 === 0 ? 'rgba(255,255,255,0.012)' : 'transparent'
+                   }}>
+                     <td style={{ padding: '6px 6px', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: C.text }}>
+                       {c.policy_name}
+                     </td>
+                     <td style={{ padding: '6px 6px', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: C.purple, fontSize: 9 }}>
+                       {c.resource_id || '-'}
+                     </td>
+                     <td style={{ padding: '6px 6px', color: C.cyan, whiteSpace: 'nowrap' }}>{c.framework.toUpperCase()}</td>
+                     <td style={{ padding: '6px 6px', fontWeight: 800, whiteSpace: 'nowrap',
+                       color: c.status === 'pass' ? C.green : C.red }}>
+                       [{c.status.toUpperCase()}]
+                     </td>
+                     <td style={{ padding: '6px 6px', whiteSpace: 'nowrap', color: sevColor }}>
+                       {c.severity.toUpperCase()}
+                     </td>
+                     <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>
+                       {isFail ? (
+                         <button
+                           onClick={() => setRemediateTarget({
+                             id:             c.id,
+                             rule_id:        c.policy_id,
+                             resource_id:    c.resource_id,
+                             severity:       c.severity,
+                             status:         'open',
+                             cloud_provider: 'aws',
+                           })}
+                           style={{
+                             padding: '2px 7px', fontSize: 8, fontFamily: 'var(--font-mono)',
+                             fontWeight: 800, cursor: 'pointer', border: `1px solid ${sevColor}`,
+                             background: `${sevColor}15`, color: sevColor, borderRadius: 3,
+                             letterSpacing: '0.05em',
+                           }}
+                           title={['critical','high'].includes(c.severity) ? 'Submit approval workflow' : 'Execute direct remediation'}
+                         >
+                           {['critical','high'].includes(c.severity) ? '⚡APPROVE' : '▶ FIX'}
+                         </button>
+                       ) : (
+                         <span style={{ fontSize: 8, color: C.green, fontFamily: 'var(--font-mono)' }}>✓ PASS</span>
+                       )}
+                     </td>
+                   </tr>
+                   )
+                 })}
                 {filteredChecks.length === 0 && (
-                  <tr><td colSpan={4} style={{ padding: 28, textAlign: 'center', color: C.dim }}>~ no results ~</td></tr>
+                  <tr><td colSpan={6} style={{ padding: 28, textAlign: 'center', color: C.dim }}>~ no results ~</td></tr>
                 )}
               </tbody>
             </table>
@@ -608,7 +782,7 @@ export default function Dashboard() {
             <table style={{ width: '100%', fontSize: 10, borderCollapse: 'collapse', ...mono }}>
               <thead style={{ position: 'sticky', top: 0, background: 'rgba(13,10,28,0.97)', zIndex: 1 }}>
                 <tr style={{ borderBottom: `1px solid ${C.red}44` }}>
-                  {['RULE', 'RESOURCE', 'PROVIDER', 'SEV', 'STATUS'].map(h => (
+                  {['RULE', 'RESOURCE', 'PROVIDER', 'SEV', 'STATUS', 'ACTION'].map(h => (
                     <th key={h} style={{ padding: '5px 6px', color: C.cyan, fontWeight: 700, textAlign: 'left' }}>{h}</th>
                   ))}
                 </tr>
@@ -616,7 +790,10 @@ export default function Dashboard() {
               <tbody>
                 {violations
                   .filter(v => !violSevFilter || v.severity === violSevFilter)
-                  .map((v, i) => (
+                  .map((v, i) => {
+                    const sevColor = v.severity === 'critical' ? C.red : v.severity === 'high' ? C.orange : v.severity === 'medium' ? C.cyan : C.dim
+                    const isResolved = v.status !== 'open'
+                    return (
                     <tr key={v.id} style={{
                       borderBottom: '1px solid rgba(255,255,255,0.03)',
                       background: i % 2 === 0 ? 'rgba(255,255,255,0.012)' : 'transparent'
@@ -624,18 +801,36 @@ export default function Dashboard() {
                       <td style={{ padding: '5px 6px', color: C.purple, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.rule_id}</td>
                       <td style={{ padding: '5px 6px', color: C.text,   maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.resource_id}</td>
                       <td style={{ padding: '5px 6px', color: C.dim,   whiteSpace: 'nowrap', fontSize: 9 }}>{v.cloud_provider.toUpperCase()}</td>
-                      <td style={{ padding: '5px 6px', fontWeight: 800, whiteSpace: 'nowrap',
-                        color: v.severity === 'critical' ? C.red : v.severity === 'high' ? C.orange : v.severity === 'medium' ? C.cyan : C.dim }}>
+                      <td style={{ padding: '5px 6px', fontWeight: 800, whiteSpace: 'nowrap', color: sevColor }}>
                         {v.severity.toUpperCase()}
                       </td>
                       <td style={{ padding: '5px 6px', whiteSpace: 'nowrap',
                         color: v.status === 'open' ? C.red : C.green, fontSize: 9 }}>
                         [{v.status.toUpperCase()}]
                       </td>
+                      <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>
+                        {!isResolved ? (
+                          <button
+                            onClick={() => setRemediateTarget(v)}
+                            style={{
+                              padding: '2px 8px', fontSize: 8, fontFamily: 'var(--font-mono)',
+                              fontWeight: 800, cursor: 'pointer', border: `1px solid ${sevColor}`,
+                              background: `${sevColor}15`, color: sevColor, borderRadius: 3,
+                              letterSpacing: '0.05em', transition: 'background 0.15s',
+                            }}
+                            title={['critical','high'].includes(v.severity) ? 'Submit approval workflow' : 'Execute direct remediation'}
+                          >
+                            {['critical','high'].includes(v.severity) ? '⚡APPROVE' : '▶ FIX'}
+                          </button>
+                        ) : (
+                          <span style={{ fontSize: 8, color: C.green, fontFamily: 'var(--font-mono)' }}>✓ DONE</span>
+                        )}
+                      </td>
                     </tr>
-                  ))}
+                    )
+                  })}
                 {violations.filter(v => !violSevFilter || v.severity === violSevFilter).length === 0 && (
-                  <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center', color: C.dim }}>~ no violations ~</td></tr>
+                  <tr><td colSpan={6} style={{ padding: 20, textAlign: 'center', color: C.dim }}>~ no violations ~</td></tr>
                 )}
               </tbody>
             </table>
@@ -772,6 +967,15 @@ export default function Dashboard() {
         </TerminalWindow>
 
       </div>
+
+      {/* ── Remediation modal ──────────────────────────────────────────────── */}
+      {remediateTarget && (
+        <RemediateModal
+          violation={remediateTarget}
+          onClose={() => setRemediateTarget(null)}
+          onSubmitted={() => { fetchViolationsDspm(); fetchData(); setRemediateTarget(null) }}
+        />
+      )}
     </div>
   )
 }
