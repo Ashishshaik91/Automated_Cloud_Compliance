@@ -52,9 +52,9 @@ COPY runbooks/ ./runbooks/
 COPY alembic.ini .
 COPY alembic/ ./alembic/
 
-# Copy JWT RSA keys (private key for signing, public key for verification)
+# JWT RSA keys are injected at runtime via docker-compose volume mount.
+# The directory is created here so the app can start; keys must NOT be baked into the image.
 RUN mkdir -p ./keys
-COPY keys/ ./keys/
 
 # Set correct ownership
 RUN chown -R appuser:appgroup /app

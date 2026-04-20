@@ -31,11 +31,10 @@ jobs:
           python-version: '3.11'
 
       - name: Python pip-audit
+        # Report vulnerabilities; || true prevents transitive issues from blocking the build
         run: |
           pip install pip-audit
-          # Report vulnerabilities but do not block the pipeline on transitive issues
-          pip-audit -r backend/requirements.txt --ignore-vuln PYSEC-2024-83 || true
-          pip-audit -r backend/requirements.txt --exit-zero
+          pip-audit -r backend/requirements.txt || true
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -44,7 +43,7 @@ jobs:
 
       - name: Node npm audit
         working-directory: ./frontend
-        # Report high/critical issues but do not block on transitive dependency findings
+        # Report critical issues only; || true prevents transitive dep findings from blocking the build
         run: npm audit --audit-level=critical || true
 
   container-scan:
