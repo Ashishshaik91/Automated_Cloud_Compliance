@@ -115,3 +115,5 @@ tfplan
 # Terraform CLI config
 .terraformrc
 terraform.rc
+# Internal security audit reports
+docs/security_report*.md
