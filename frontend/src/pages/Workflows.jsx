@@ -1,15 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { CheckCircle, XCircle, Clock, AlertTriangle, Send, RefreshCw, Play, X } from 'lucide-react'
+import api from '../api/client'
 
-const API = '/api/v1/workflows'
-
-function token() {
-  return localStorage.getItem('access_token')
-}
-
-function authHeaders() {
-  return { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` }
-}
+const WF = '/workflows'  // base path — api client prepends /api/v1
 
 function getRoleFromToken() {
   try {
@@ -67,13 +60,10 @@ function SubmitModal({ onClose, onSubmitted }) {
     if (!form.title.trim()) { setError('Title is required'); return }
     setLoading(true); setError('')
     try {
-      const res = await fetch(`${API}/requests`, {
-        method: 'POST', headers: authHeaders(), body: JSON.stringify(form),
-      })
-      if (!res.ok) { const d = await res.json(); throw new Error(d.detail || 'Failed') }
+      await api.post(`${WF}/requests`, form)
       onSubmitted()
       onClose()
-    } catch (e) { setError(e.message) }
+    } catch (e) { setError(e.response?.data?.detail || e.message) }
     finally { setLoading(false) }
   }
 
@@ -191,15 +181,12 @@ function RequestCard({ req, role, onRefresh }) {
   const [modal, setModal] = useState(null) // 'approve' | 'reject' | null
   const [actLoading, setActLoading] = useState(false)
 
-  const act = async (endpoint, method = 'POST', body = {}) => {
+  const act = async (endpoint, method = 'post', body = {}) => {
     setActLoading(true)
     try {
-      const res = await fetch(`${API}/requests/${req.id}/${endpoint}`, {
-        method, headers: authHeaders(), body: JSON.stringify(body),
-      })
-      if (!res.ok) { const d = await res.json(); throw new Error(d.detail || 'Action failed') }
+      await api[method](`${WF}/requests/${req.id}/${endpoint}`, body)
       onRefresh()
-    } catch (e) { alert(e.message) }
+    } catch (e) { alert(e.response?.data?.detail || e.message) }
     finally { setActLoading(false) }
   }
 
@@ -296,10 +283,9 @@ export default function Workflows() {
     setLoading(true); setError('')
     try {
       const qs = statusFilter ? `?status=${statusFilter}` : ''
-      const res = await fetch(`${API}/requests${qs}`, { headers: authHeaders() })
-      if (!res.ok) throw new Error('Failed to load requests')
-      setRequests(await res.json())
-    } catch (e) { setError(e.message) }
+      const res = await api.get(`${WF}/requests${qs}`)
+      setRequests(Array.isArray(res.data) ? res.data : [])
+    } catch (e) { setError(e.response?.data?.detail || e.message || 'Failed to load requests') }
     finally { setLoading(false) }
   }, [statusFilter])
 
