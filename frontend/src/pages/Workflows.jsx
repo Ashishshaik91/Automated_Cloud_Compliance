@@ -4,15 +4,6 @@ import api from '../api/client'
 
 const WF = '/workflows'  // base path — api client prepends /api/v1
 
-function getRoleFromToken() {
-  try {
-    const t = token()
-    if (!t) return 'viewer'
-    const payload = JSON.parse(atob(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
-    return payload.role || 'viewer'
-  } catch { return 'viewer' }
-}
-
 // ── Status badge ────────────────────────────────────────────────────────────
 
 const STATUS_STYLES = {
@@ -177,7 +168,7 @@ function NotesModal({ title, actionLabel, actionColor, onConfirm, onClose }) {
 
 // ── Request card ─────────────────────────────────────────────────────────────
 
-function RequestCard({ req, role, onRefresh }) {
+function RequestCard({ req, role, myId, onRefresh }) {
   const [modal, setModal] = useState(null) // 'approve' | 'reject' | null
   const [actLoading, setActLoading] = useState(false)
 
@@ -190,9 +181,9 @@ function RequestCard({ req, role, onRefresh }) {
     finally { setActLoading(false) }
   }
 
-  const riskStyle = RISK_STYLES[req.risk_level] || RISK_STYLES.medium
-  const isAdmin  = role === 'admin'
-  const isOwner  = true // simplified — backend enforces real ownership
+  const riskStyle   = RISK_STYLES[req.risk_level] || RISK_STYLES.medium
+  const isAdmin     = role === 'admin' || role === 'auditor'
+  const isSelfOwned = myId && req.requester_id === myId
 
   return (
     <div style={{
@@ -228,8 +219,8 @@ function RequestCard({ req, role, onRefresh }) {
 
         {/* Actions */}
         {req.status === 'pending' && (
-          <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
-            {isAdmin && (
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap', alignItems: 'center' }}>
+            {isAdmin && !isSelfOwned && (
               <>
                 <button onClick={() => setModal('approve')} disabled={actLoading}
                   style={{ padding: '6px 14px', borderRadius: 6, border: 'none', background: 'rgba(34,197,94,0.15)', color: '#22c55e', cursor: 'pointer', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -240,6 +231,11 @@ function RequestCard({ req, role, onRefresh }) {
                   <XCircle size={13} /> Reject
                 </button>
               </>
+            )}
+            {isAdmin && isSelfOwned && (
+              <span style={{ fontSize: 11, color: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>
+                4-EYES: needs a second admin to review
+              </span>
             )}
             <button onClick={() => act('cancel')} disabled={actLoading}
               style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-dim)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -272,12 +268,21 @@ function RequestCard({ req, role, onRefresh }) {
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function Workflows() {
-  const role = getRoleFromToken()
+  const [role, setRole]           = useState('')  // fetched from /auth/me
+  const [myId, setMyId]           = useState(null)
   const [requests, setRequests]   = useState([])
   const [loading, setLoading]     = useState(true)
   const [error, setError]         = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [showSubmit, setShowSubmit] = useState(false)
+
+  // Fetch authoritative role from backend — more reliable than JWT parsing
+  useEffect(() => {
+    api.get('/auth/me').then(r => {
+      setRole(r.data.role || 'viewer')
+      setMyId(r.data.id)
+    }).catch(() => setRole('viewer'))
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true); setError('')
@@ -363,7 +368,7 @@ export default function Workflows() {
         </div>
       ) : (
         requests.map(req => (
-          <RequestCard key={req.id} req={req} role={role} onRefresh={load} />
+          <RequestCard key={req.id} req={req} role={role} myId={myId} onRefresh={load} />
         ))
       )}
 
