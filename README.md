@@ -176,8 +176,8 @@ Org-scoped live event feed for real-time dashboard updates:
 │  TLS     │               FastAPI REST API                │  OPA Engine  │
 │  Proxy   │───────────────────────────────────────────────│  Rego / YAML │
 │ (443/80) │  DSPM  │  Violations  │  Remediations         │──────────────┤
-│          │                                               │              │
-│  React   │  Background Workers (scan, enrich, sweep)     │              │
+│          │                                               │  Workflows   │
+│  React   │  Background Workers (scan, enrich, sweep)     │  & RBAC      │
 │  TUI     │                                               │              │
 ├──────────┴───────────────────────────────────────────────┴──────────────┤
 │   PostgreSQL (async ORM)   │   Redis (cache + pub/sub)   │   MinIO     │
