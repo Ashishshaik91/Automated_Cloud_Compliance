@@ -161,6 +161,8 @@ Org-scoped live event feed for real-time dashboard updates:
 - **Role-Based Access Control (RBAC):** UI remediation buttons (`FIX` / `APPROVE`) are now dynamically protected. `Admin` and `Auditor` roles retain access, while `Dev` and `Viewer` accounts are restricted to a `VIEW ONLY` state.
 - **Dashboard & Alerts UI/UX:** Resolved layout overflow issues where log tables expanded beyond their container boundaries. Tables now scroll internally within perfectly bounded visual frames.
 - **Modal Portals:** Migrated all modals (like Remediation) to React Portals for consistent viewport centering regardless of parent container constraints.
+- **MFA Enrolment UI:** Integrated a dedicated Security Settings page allowing users to opt into TOTP-based Multi-Factor Authentication. The UI dynamically renders QR codes for setup and provides secure, one-time backup recovery codes.
+- **2-Step Login Flow:** Upgraded the primary authentication screen to seamlessly intercept logins for MFA-enrolled accounts, enforcing a secondary 6-digit TOTP challenge before granting access to the platform.
 
 ---
 
