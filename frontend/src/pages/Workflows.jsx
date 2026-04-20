@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { CheckCircle, XCircle, Clock, AlertTriangle, Send, RefreshCw, Play, X } from 'lucide-react'
 import api from '../api/client'
 
@@ -58,7 +59,7 @@ function SubmitModal({ onClose, onSubmitted }) {
     finally { setLoading(false) }
   }
 
-  return (
+  return createPortal(
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
@@ -133,7 +134,8 @@ function SubmitModal({ onClose, onSubmitted }) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -149,7 +151,7 @@ function NotesModal({ title, actionLabel, actionColor, onConfirm, onClose }) {
     setLoading(false)
   }
 
-  return (
+  return createPortal(
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1001 }}>
       <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 24, width: 380 }}>
         <h4 style={{ margin: '0 0 16px', color: 'var(--color-text)' }}>{title}</h4>
@@ -162,7 +164,8 @@ function NotesModal({ title, actionLabel, actionColor, onConfirm, onClose }) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -181,12 +184,9 @@ function RequestCard({ req, role, myId, onRefresh }) {
     finally { setActLoading(false) }
   }
 
-  const riskStyle   = RISK_STYLES[req.risk_level] || RISK_STYLES.medium
+  const riskStyle  = RISK_STYLES[req.risk_level] || RISK_STYLES.medium
   const roleLoaded  = role !== ''
   const isAdmin     = roleLoaded && (role === 'admin' || role === 'auditor')
-  // Use == (loose) to handle int vs string mismatch from API
-  // eslint-disable-next-line eqeqeq
-  const isSelfOwned = myId != null && req.requester_id == myId
 
   return (
     <div style={{
@@ -223,7 +223,7 @@ function RequestCard({ req, role, myId, onRefresh }) {
         {/* Actions */}
         {req.status === 'pending' && (
           <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap', alignItems: 'center' }}>
-            {isAdmin && !isSelfOwned && (
+            {isAdmin && (
               <>
                 <button onClick={() => setModal('approve')} disabled={actLoading}
                   style={{ padding: '6px 14px', borderRadius: 6, border: 'none', background: 'rgba(34,197,94,0.15)', color: '#22c55e', cursor: 'pointer', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -234,11 +234,6 @@ function RequestCard({ req, role, myId, onRefresh }) {
                   <XCircle size={13} /> Reject
                 </button>
               </>
-            )}
-            {isAdmin && isSelfOwned && (
-              <span style={{ fontSize: 11, color: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>
-                4-EYES: needs a second admin to review
-              </span>
             )}
             <button onClick={() => act('cancel')} disabled={actLoading}
               style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-dim)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
