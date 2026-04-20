@@ -81,7 +81,7 @@ def print_banner():
     os.system("cls" if os.name == "nt" else "clear")
     print(f"""
 {C}╔══════════════════════════════════════════════════════════════════╗
-║        Cloud Compliance Resource Manager  v1.0                   ║
+║        Cloud Compliance Resource Manager  v1.1                   ║
 ║   Manages intentionally vulnerable AWS + GCP demo resources       ║
 ╚══════════════════════════════════════════════════════════════════╝{NC}
 
