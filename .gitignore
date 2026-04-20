@@ -75,8 +75,36 @@ backend/app/ml/models/*.joblib
 backend_l*.txt
 frontend/lint_out.json
 
-# Terraform
+# ── Terraform ────────────────────────────────────────────────────────────────
+# State files contain plaintext secrets (IAM keys, passwords, private keys)
 .terraform/
-.terraform.lock.hcl
+**/.terraform/
 *.tfstate
 *.tfstate.backup
+*.tfstate.*.backup
+
+# Terraform variable files that may contain secrets
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# Terraform override files (local developer overrides)
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Terraform lock file (auto-generated, commit only if you pin provider versions)
+.terraform.lock.hcl
+
+# Terraform crash log
+crash.log
+crash.*.log
+
+# Terraform plan files (may contain secrets in diff output)
+*.tfplan
+tfplan
+
+# Terraform CLI config
+.terraformrc
+terraform.rc
