@@ -85,60 +85,60 @@ function RemediateModal({ violation, onClose, onSubmitted }) {
 
   return createPortal(
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.75)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000 }}>
-      <div style={{ background:'#13111f', border:`1px solid ${sevColor}55`, borderRadius:10, padding:24, width:480, maxWidth:'95vw', fontFamily:'var(--font-mono)' }}>
-        <div style={{ fontSize:13, fontWeight:800, color:'#e2e8f0', marginBottom:4 }}>REMEDIATE VIOLATION</div>
-        <div style={{ fontSize:10, color:'rgba(255,255,255,0.4)', marginBottom:16, borderBottom:'1px solid rgba(255,255,255,0.06)', paddingBottom:12 }}>
+      <div style={{ background:'#13111f', border:`1px solid ${sevColor}55`, borderRadius:10, padding:32, width:550, maxWidth:'95vw', fontFamily:'var(--font-mono)' }}>
+        <div style={{ fontSize:18, fontWeight:800, color:'#e2e8f0', marginBottom:8 }}>REMEDIATE VIOLATION</div>
+        <div style={{ fontSize:13, color:'rgba(255,255,255,0.4)', marginBottom:20, borderBottom:'1px solid rgba(255,255,255,0.06)', paddingBottom:16 }}>
           <span style={{ color: sevColor, fontWeight:800 }}>[{sev.toUpperCase()}]</span>&nbsp;
           {violation.rule_id} → {violation.resource_id}
         </div>
 
         {result ? (
-          <div style={{ padding:'12px 14px', borderRadius:6, background: result.status === 'workflow_submitted' ? 'rgba(99,102,241,0.1)' : 'rgba(34,197,94,0.1)', marginBottom:16 }}>
-            <div style={{ color: result.status === 'workflow_submitted' ? '#818cf8' : '#22c55e', fontWeight:700, fontSize:12, marginBottom:4 }}>
+          <div style={{ padding:'16px 18px', borderRadius:6, background: result.status === 'workflow_submitted' ? 'rgba(99,102,241,0.1)' : 'rgba(34,197,94,0.1)', marginBottom:20 }}>
+            <div style={{ color: result.status === 'workflow_submitted' ? '#818cf8' : '#22c55e', fontWeight:700, fontSize:15, marginBottom:6 }}>
               {result.status === 'workflow_submitted' ? 'Approval request submitted' : `${result.status?.toUpperCase()}`}
             </div>
-            {result.workflow_id && <div style={{ fontSize:10, color:'rgba(255,255,255,0.4)' }}>Workflow ID: {result.workflow_id}</div>}
-            {result.message    && <div style={{ fontSize:10, color:'rgba(255,255,255,0.5)', marginTop:4 }}>{result.message}</div>}
-            {result.dry_run    && <div style={{ fontSize:10, color:'#f59e0b', marginTop:4 }}>⚠ DRY RUN — no changes applied</div>}
+            {result.workflow_id && <div style={{ fontSize:13, color:'rgba(255,255,255,0.4)' }}>Workflow ID: {result.workflow_id}</div>}
+            {result.message    && <div style={{ fontSize:13, color:'rgba(255,255,255,0.5)', marginTop:6 }}>{result.message}</div>}
+            {result.dry_run    && <div style={{ fontSize:13, color:'#f59e0b', marginTop:6 }}>⚠ DRY RUN — no changes applied</div>}
           </div>
         ) : (
           <>
             {isHighRisk && (
-              <div style={{ padding:'8px 12px', background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.2)', borderRadius:6, fontSize:10, color:'#fca5a5', marginBottom:12 }}>
+              <div style={{ padding:'12px 16px', background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.2)', borderRadius:6, fontSize:13, color:'#fca5a5', marginBottom:16 }}>
                 ⚠ {sev.toUpperCase()} severity — this will submit an approval request (4-eyes required before execution)
               </div>
             )}
             {!isHighRisk && (
-              <div style={{ padding:'8px 12px', background: dryRun ? 'rgba(6,182,212,0.08)' : 'rgba(34,197,94,0.08)', border:`1px solid ${dryRun ? 'rgba(6,182,212,0.2)' : 'rgba(34,197,94,0.2)'}`, borderRadius:6, fontSize:10, color: dryRun ? '#67e8f9' : '#86efac', marginBottom:12 }}>
+              <div style={{ padding:'12px 16px', background: dryRun ? 'rgba(6,182,212,0.08)' : 'rgba(34,197,94,0.08)', border:`1px solid ${dryRun ? 'rgba(6,182,212,0.2)' : 'rgba(34,197,94,0.2)'}`, borderRadius:6, fontSize:13, color: dryRun ? '#67e8f9' : '#86efac', marginBottom:16 }}>
                 {dryRun ? '⚠' : 'ℹ'} {sev.toUpperCase()} severity — will execute directly&nbsp;
                 <span style={{ fontWeight:800 }}>(dry_run={String(dryRun)})</span>
                 {dryRun ? ' — no real changes, preview only' : ' — LIVE: real changes will be made'}
               </div>
             )}
             {error && (
-              <div style={{ padding:'8px 12px', background:'rgba(239,68,68,0.1)', color:'#ef4444', borderRadius:6, fontSize:11, marginBottom:12 }}>{error}</div>
+              <div style={{ padding:'12px 16px', background:'rgba(239,68,68,0.1)', color:'#ef4444', borderRadius:6, fontSize:14, marginBottom:16 }}>{error}</div>
             )}
             {isHighRisk && (
-              <div style={{ marginBottom:14 }}>
-                <label style={{ fontSize:10, color:'rgba(255,255,255,0.4)', display:'block', marginBottom:4 }}>Notes (optional)</label>
-                <textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)}
+              <div style={{ marginBottom:18 }}>
+                <label style={{ fontSize:13, color:'rgba(255,255,255,0.4)', display:'block', marginBottom:6 }}>Notes (optional)</label>
+                <textarea rows={3} value={notes} onChange={e => setNotes(e.target.value)}
                   placeholder="Reason for remediation..."
-                  style={{ width:'100%', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:6, padding:'7px 10px', color:'#e2e8f0', fontSize:11, resize:'vertical', boxSizing:'border-box', fontFamily:'inherit' }}
+                  style={{ width:'100%', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:6, padding:'10px 14px', color:'#e2e8f0', fontSize:14, resize:'vertical', boxSizing:'border-box', fontFamily:'inherit' }}
                 />
               </div>
             )}
           </>
         )}
 
-        <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
-          <button onClick={onClose} style={{ padding:'7px 16px', borderRadius:6, border:'1px solid rgba(255,255,255,0.12)', background:'transparent', color:'rgba(255,255,255,0.4)', cursor:'pointer', fontSize:11 }}>
+        <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
+          <button onClick={onClose} style={{ padding:'9px 20px', borderRadius:6, border:'1px solid rgba(255,255,255,0.12)', background:'transparent', color:'rgba(255,255,255,0.4)', cursor:'pointer', fontSize:14 }}>
             {result ? 'Close' : 'Cancel'}
           </button>
           {!result && (
             <button
               onClick={isHighRisk ? runViaWorkflow : runDirect}
               disabled={loading}
-              style={{ padding:'7px 18px', borderRadius:6, border:'none', background: sevColor, color:'#fff', cursor: loading ? 'not-allowed' : 'pointer', fontSize:11, fontWeight:700, opacity: loading ? 0.6 : 1 }}
+              style={{ padding:'9px 24px', borderRadius:6, border:'none', background: sevColor, color:'#fff', cursor: loading ? 'not-allowed' : 'pointer', fontSize:14, fontWeight:700, opacity: loading ? 0.6 : 1 }}
             >
               {loading ? 'Processing...' : isHighRisk ? 'Submit for Approval' : 'Execute Remediation'}
             </button>
