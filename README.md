@@ -53,10 +53,17 @@ The DSPM Engine previously used a hardcoded `_DATA_STORES` list of 10 simulated 
 - **Clean refresh**: `DELETE FROM dspm_findings` on each run — no ghost entries from decommissioned buckets
 - **Threat intel intact**: VirusTotal and NVD CVE enrichment runs against the real bucket/instance names
 
-### Dashboard Stabilisation
+### Dashboard & UI Stabilisation
 
-- **NO DATA bug fixed**: preliminary scans that completed with `total_checks == 0` were rendering as `NO DATA` tiles; the frontend now filters these out before rendering
-- **Trend graph history**: scan fetch limit raised from 20 → 200 so historical trend lines remain populated after frequent daily scans
+- **Modal Overlay Positioning**: Migrated Dashboard and Workflow modals (Remediation, Submit Approval, Approve/Reject) to use React Portals. This detaches them from parent container constraints, ensuring they render perfectly centered in the viewport regardless of page scroll depth or flexbox layouts.
+- **Enhanced UI Readability**: Increased base font sizes, width, and padding across all modal interfaces to improve typographic hierarchy and readability.
+- **NO DATA bug fixed**: Preliminary scans that completed with `total_checks == 0` were rendering as `NO DATA` tiles; the frontend now filters these out before rendering.
+- **Trend graph history**: Scan fetch limit raised from 20 to 200 so historical trend lines remain populated after frequent daily scans.
+
+### Workflow Engine Refinements
+
+- **System Auto-Approvals**: Relaxed the 4-eyes rule for system-generated violation remediation requests. Administrators can now directly approve these automated requests, preventing workflow bottlenecks while still strictly enforcing the 4-eyes rule for human-initiated manual changes.
+- **Backend Schema Stabilisation**: Removed lazy-loaded SQLAlchemy relationships from Pydantic auth schemas, resolving critical 500/502 Internal Server Errors during JWT role resolution and ensuring consistent frontend authorization states.
 
 ### Multi-Account Org Hierarchy & RBAC Isolation
 
