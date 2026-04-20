@@ -21,6 +21,7 @@ Returns text confirmation on each action.
 
 import json
 import os
+import ssl
 import subprocess
 import sys
 import time
@@ -37,7 +38,7 @@ SCRIPT_DIR   = Path(__file__).parent.resolve()
 PROJECT_ROOT = SCRIPT_DIR.parent
 INFRA_DIR    = SCRIPT_DIR
 ENV_FILE     = PROJECT_ROOT / ".env"
-BACKEND_URL  = "http://localhost:8000"
+BACKEND_URL  = "https://localhost"
 
 # ANSI color codes
 R  = "\033[0;31m"   # Red
@@ -238,8 +239,14 @@ def _api(
     if token:
         headers["Authorization"] = f"Bearer {token}"
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    
+    # Bypass SSL verification for local self-signed certs
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
             return resp.status, json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
         try:
@@ -279,8 +286,12 @@ def wait_for_backend(timeout: int = 30) -> bool:
     print_step(f"Waiting for backend at {BACKEND_URL}...")
     deadline = time.time() + timeout
     while time.time() < deadline:
+        # Bypass SSL verification for local self-signed certs
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
         try:
-            with urllib.request.urlopen(f"{BACKEND_URL}/api/v1/health", timeout=3) as r:
+            with urllib.request.urlopen(f"{BACKEND_URL}/api/v1/health", timeout=3, context=ctx) as r:
                 if r.status < 500:
                     return True
         except Exception:
@@ -384,7 +395,10 @@ def action_deploy(token: str) -> str:
     print_ok(f"Terraform: {summary}")
     time.sleep(3)  # brief pause for GCP/AWS API consistency
 
-    scan_summary = run_all_scans(token)
+    if token and confirm("Trigger compliance scans now?"):
+        scan_summary = run_all_scans(token)
+    else:
+        scan_summary = "Scan skipped by user."
     result = (
         f"✅ Resources deployed.\n"
         f"   Terraform: {summary}\n"
@@ -413,7 +427,10 @@ def action_update(token: str) -> str:
             return f"❌ Terraform apply failed: {apply_summary}"
         print_ok(f"Applied: {apply_summary}")
 
-    scan_summary = run_all_scans(token)
+    if token and confirm("Trigger compliance scans now?"):
+        scan_summary = run_all_scans(token)
+    else:
+        scan_summary = "Scan skipped by user."
     result = (
         f"✅ Resources updated/patched.\n"
         f"   Terraform: {plan_summary}\n"
