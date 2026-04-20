@@ -38,6 +38,7 @@ class UserResponse(BaseModel):
     full_name: str
     role: str
     is_active: bool
+    mfa_enabled: bool
     organization_id: Optional[int] = None
     created_at: datetime
 

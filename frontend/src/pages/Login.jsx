@@ -6,6 +6,12 @@ export default function Login({ setToken }) {
   const [identity, setIdentity] = useState('')
   const [cypherKey, setCypherKey] = useState('')
   const [status, setStatus] = useState('IDLE')
+  
+  // MFA States
+  const [mfaStep, setMfaStep] = useState(false)
+  const [mfaToken, setMfaToken] = useState('')
+  const [mfaCode, setMfaCode] = useState('')
+  const [useBackup, setUseBackup] = useState(false)
 
   const handleEstablishLink = async (e) => {
     e.preventDefault()
@@ -18,9 +24,35 @@ export default function Login({ setToken }) {
       const res = await api.post('/auth/login', formData, {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       })
+      
+      if (res.data.mfa_required) {
+        setMfaToken(res.data.mfa_token)
+        setMfaStep(true)
+        setStatus('IDLE')
+        return
+      }
+      
       setStatus('LINK_ESTABLISHED')
       // setToken (= App's login()) triggers a refetch of /api/v1/auth/me
       // and updates isAuthenticated state → App re-renders.
+      setTimeout(() => setToken(), 600)
+    } catch (err) {
+      console.error(err)
+      setStatus('LINK_FAILURE')
+      setTimeout(() => setStatus('IDLE'), 2000)
+    }
+  }
+
+  const handleVerifyMfa = async (e) => {
+    e.preventDefault()
+    setStatus('LINK_INITIATED')
+    try {
+      await api.post('/auth/mfa/verify', {
+        mfa_token: mfaToken,
+        code: mfaCode,
+        use_backup: useBackup
+      })
+      setStatus('LINK_ESTABLISHED')
       setTimeout(() => setToken(), 600)
     } catch (err) {
       console.error(err)
@@ -96,78 +128,146 @@ export default function Login({ setToken }) {
           </div>
         </div>
 
-        <form onSubmit={handleEstablishLink} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <div style={{ position: 'relative' }}>
-            <label style={{ display: 'block', fontSize: 9, color: 'var(--color-text-dim)', marginBottom: 8, fontFamily: 'var(--font-mono)' }}>
-              {'>>'} IDENTITY_ID_ROOT
-            </label>
-            <input
-              type="text"
-              placeholder="user@compliance.local"
-              value={identity}
-              onChange={(e) => setIdentity(e.target.value)}
-              style={{
-                width: '100%',
-                background: 'rgba(255,255,255,0.03)',
-                border: '1px solid var(--color-border)',
-                padding: '12px',
-                color: 'var(--color-text)',
-                fontFamily: 'var(--font-mono)',
-                fontSize: 13,
-                outline: 'none',
-                boxSizing: 'border-box'
-              }}
-              required
-            />
-          </div>
+        {!mfaStep ? (
+          <form onSubmit={handleEstablishLink} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div style={{ position: 'relative' }}>
+              <label style={{ display: 'block', fontSize: 9, color: 'var(--color-text-dim)', marginBottom: 8, fontFamily: 'var(--font-mono)' }}>
+                {'>>'} IDENTITY_ID_ROOT
+              </label>
+              <input
+                type="text"
+                placeholder="user@compliance.local"
+                value={identity}
+                onChange={(e) => setIdentity(e.target.value)}
+                style={{
+                  width: '100%',
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid var(--color-border)',
+                  padding: '12px',
+                  color: 'var(--color-text)',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 13,
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+                required
+              />
+            </div>
 
-          <div style={{ position: 'relative' }}>
-            <label style={{ display: 'block', fontSize: 9, color: 'var(--color-text-dim)', marginBottom: 8, fontFamily: 'var(--font-mono)' }}>
-              {'>>'} CYPHER_KEY_ACCESS
-            </label>
-            <input
-              type="password"
-              placeholder="••••••••••••"
-              value={cypherKey}
-              onChange={(e) => setCypherKey(e.target.value)}
-              style={{
-                width: '100%',
-                background: 'rgba(255,255,255,0.03)',
-                border: '1px solid var(--color-border)',
-                padding: '12px',
-                color: 'var(--color-text)',
-                fontFamily: 'var(--font-mono)',
-                fontSize: 13,
-                outline: 'none',
-                boxSizing: 'border-box'
-              }}
-              required
-            />
-          </div>
+            <div style={{ position: 'relative' }}>
+              <label style={{ display: 'block', fontSize: 9, color: 'var(--color-text-dim)', marginBottom: 8, fontFamily: 'var(--font-mono)' }}>
+                {'>>'} CYPHER_KEY_ACCESS
+              </label>
+              <input
+                type="password"
+                placeholder="••••••••••••"
+                value={cypherKey}
+                onChange={(e) => setCypherKey(e.target.value)}
+                style={{
+                  width: '100%',
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid var(--color-border)',
+                  padding: '12px',
+                  color: 'var(--color-text)',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 13,
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+                required
+              />
+            </div>
 
-          <button
-            type="submit"
-            disabled={status !== 'IDLE' && status !== 'LINK_FAILURE'}
-            style={{
-              marginTop: 10,
-              padding: '14px',
-              background: status === 'LINK_FAILURE' ? 'var(--color-danger)' : 'var(--color-primary)',
-              color: '#000',
-              border: 'none',
-              fontWeight: 900,
-              fontSize: 12,
-              fontFamily: 'var(--font-mono)',
-              cursor: 'pointer',
-              transition: 'all 0.3s',
-              opacity: status === 'LINK_INITIATED' ? 0.7 : 1
-            }}
-          >
-            {status === 'IDLE' && '>> ESTABLISH_SECURE_LINK'}
-            {status === 'LINK_INITIATED' && '>> INITIATING_UPLINK...'}
-            {status === 'LINK_ESTABLISHED' && '>> ACCESS_GRANTED'}
-            {status === 'LINK_FAILURE' && '>> ACCESS_DENIED_RETRY'}
-          </button>
-        </form>
+            <button
+              type="submit"
+              disabled={status !== 'IDLE' && status !== 'LINK_FAILURE'}
+              style={{
+                marginTop: 10,
+                padding: '14px',
+                background: status === 'LINK_FAILURE' ? 'var(--color-danger)' : 'var(--color-primary)',
+                color: '#000',
+                border: 'none',
+                fontWeight: 900,
+                fontSize: 12,
+                fontFamily: 'var(--font-mono)',
+                cursor: 'pointer',
+                transition: 'all 0.3s',
+                opacity: status === 'LINK_INITIATED' ? 0.7 : 1
+              }}
+            >
+              {status === 'IDLE' && '>> ESTABLISH_SECURE_LINK'}
+              {status === 'LINK_INITIATED' && '>> INITIATING_UPLINK...'}
+              {status === 'LINK_ESTABLISHED' && '>> ACCESS_GRANTED'}
+              {status === 'LINK_FAILURE' && '>> ACCESS_DENIED_RETRY'}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleVerifyMfa} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div style={{ position: 'relative' }}>
+              <label style={{ display: 'block', fontSize: 9, color: 'var(--color-warning)', marginBottom: 8, fontFamily: 'var(--font-mono)' }}>
+                {'>>'} MULTI_FACTOR_AUTHORIZATION_REQUIRED
+              </label>
+              <input
+                type="text"
+                placeholder={useBackup ? "8-character backup code" : "6-digit TOTP code"}
+                value={mfaCode}
+                onChange={(e) => setMfaCode(e.target.value)}
+                style={{
+                  width: '100%',
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid var(--color-warning)',
+                  padding: '12px',
+                  color: 'var(--color-text)',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 18,
+                  letterSpacing: 2,
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                  textAlign: 'center'
+                }}
+                required
+              />
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 10, color: 'var(--color-text-dim)', cursor: 'pointer', marginTop: 12 }}>
+                <input 
+                  type="checkbox" 
+                  checked={useBackup} 
+                  onChange={e => setUseBackup(e.target.checked)}
+                />
+                USE_BACKUP_CODE
+              </label>
+            </div>
+
+            <button
+              type="submit"
+              disabled={status !== 'IDLE' && status !== 'LINK_FAILURE'}
+              style={{
+                marginTop: 10,
+                padding: '14px',
+                background: status === 'LINK_FAILURE' ? 'var(--color-danger)' : 'var(--color-warning)',
+                color: '#000',
+                border: 'none',
+                fontWeight: 900,
+                fontSize: 12,
+                fontFamily: 'var(--font-mono)',
+                cursor: 'pointer',
+                transition: 'all 0.3s',
+                opacity: status === 'LINK_INITIATED' ? 0.7 : 1
+              }}
+            >
+              {status === 'IDLE' && '>> VERIFY_TOKEN'}
+              {status === 'LINK_INITIATED' && '>> VERIFYING...'}
+              {status === 'LINK_ESTABLISHED' && '>> ACCESS_GRANTED'}
+              {status === 'LINK_FAILURE' && '>> TOKEN_REJECTED'}
+            </button>
+            <button 
+              type="button"
+              onClick={() => { setMfaStep(false); setStatus('IDLE'); setMfaCode(''); }}
+              style={{ background: 'none', border: 'none', color: 'var(--color-text-dim)', fontSize: 10, cursor: 'pointer', fontFamily: 'var(--font-mono)' }}
+            >
+              {'<<'} CANCEL_AND_RETURN
+            </button>
+          </form>
+        )}
 
         <div style={{ marginTop: 32, textAlign: 'center', fontSize: 8, color: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>
           SECURE_ENCLAVE_ACTIVE // AES-256_GCM // DIREWOLF_PROTOCOL_V4

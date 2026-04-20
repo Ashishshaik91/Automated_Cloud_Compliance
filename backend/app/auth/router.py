@@ -350,6 +350,7 @@ async def get_me(current_user: CurrentUser) -> UserResponse:
         full_name=current_user.full_name,
         role=current_user.role,
         is_active=current_user.is_active,
+        mfa_enabled=current_user.mfa_enabled,
         organization_id=current_user.organization_id,
         created_at=current_user.created_at,
     )

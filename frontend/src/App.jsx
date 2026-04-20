@@ -25,6 +25,7 @@ import Accounts from './pages/Accounts'
 import Login from './pages/Login'
 import Admin from './pages/Admin'
 import Workflows from './pages/Workflows'
+import Settings from './pages/Settings'
 
 // ─── Role helpers ──────────────────────────────────────────────────────────────
 
@@ -42,6 +43,7 @@ const ROLE_BADGES = {
 const useAuth = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [role, setRole] = useState('viewer')
+  const [mfaEnabled, setMfaEnabled] = useState(false)
   const [loading, setLoading] = useState(true)
 
   const checkAuth = async () => {
@@ -50,13 +52,16 @@ const useAuth = () => {
       if (res.status === 200) {
         setIsAuthenticated(true)
         setRole(res.data.role || 'viewer')
+        setMfaEnabled(res.data.mfa_enabled || false)
       } else {
         setIsAuthenticated(false)
         setRole(null)
+        setMfaEnabled(false)
       }
     } catch {
       setIsAuthenticated(false)
       setRole(null)
+      setMfaEnabled(false)
     } finally {
       setLoading(false)
     }
@@ -78,9 +83,10 @@ const useAuth = () => {
     }
     setIsAuthenticated(false)
     setRole(null)
+    setMfaEnabled(false)
   }
 
-  return { role, login, logout, isAuthenticated, loading }
+  return { role, mfaEnabled, login, logout, isAuthenticated, loading }
 }
 
 // ─── Role-gated route ──────────────────────────────────────────────────────────
@@ -133,6 +139,7 @@ const StatusBar = ({ logout, role, theme, setTheme }) => {
     { label: '06:Cloud',to: '/accounts',   minRole: 'dev'     },
     { label: '07:Wrkflw', to: '/workflows', minRole: 'dev'   },
     { label: '08:Adm',  to: '/admin',      minRole: 'admin'  },
+    { label: '09:Sec',  to: '/settings',   minRole: 'viewer' },
   ]
 
   const visibleItems = navItems.filter(item => ROLE_RANK[role] >= ROLE_RANK[item.minRole])
@@ -237,6 +244,7 @@ export default function App() {
               <Route path="/accounts"  element={<RoleRoute element={<Accounts />}   minRole="dev"     userRole={role} />} />
               <Route path="/workflows" element={<RoleRoute element={<Workflows />}  minRole="dev"     userRole={role} />} />
               <Route path="/admin"     element={<RoleRoute element={<Admin role={role} />} minRole="admin" userRole={role} />} />
+              <Route path="/settings"  element={<RoleRoute element={<Settings />} minRole="viewer" userRole={role} />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>
           </PageTransition>
