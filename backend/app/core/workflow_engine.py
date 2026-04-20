@@ -74,7 +74,12 @@ async def approve_request(
     request_id: str,
     notes: str = "",
 ) -> ApprovalRequest:
-    """Approve a pending request. Enforces 4-eyes and role checks."""
+    """Approve a pending request.
+
+    4-eyes rule applies only to human-submitted requests.
+    Auto-generated system requests (violation scanner) may be approved
+    by any admin/auditor regardless of who the requester_id is.
+    """
     req = await get_request(db, request_id)
     if not req:
         raise ValueError(f"Request {request_id} not found")
@@ -84,8 +89,12 @@ async def approve_request(
         req.status = ApprovalStatus.EXPIRED
         await db.flush()
         raise ValueError("Request has expired")
-    if req.requester_id == approver.id:
+
+    # 4-eyes: only enforce for manually submitted requests
+    is_system = req.action_payload.get("system_generated", False)
+    if not is_system and req.requester_id == approver.id:
         raise PermissionError("Cannot approve your own request (4-eyes rule)")
+
     if approver.role not in APPROVER_ROLES:
         raise PermissionError(f"Role '{approver.role}' cannot approve requests")
 

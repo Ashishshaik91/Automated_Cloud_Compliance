@@ -40,8 +40,6 @@ class UserResponse(BaseModel):
     is_active: bool
     organization_id: Optional[int] = None
     created_at: datetime
-    account_roles: list = []  # List[AccountRoleSchema] populated by endpoint
-
 
 class AdminUserCreate(BaseModel):
     """Admin-only schema to create a user with an explicit role and org assignment."""
