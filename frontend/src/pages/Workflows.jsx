@@ -182,8 +182,11 @@ function RequestCard({ req, role, myId, onRefresh }) {
   }
 
   const riskStyle   = RISK_STYLES[req.risk_level] || RISK_STYLES.medium
-  const isAdmin     = role === 'admin' || role === 'auditor'
-  const isSelfOwned = myId && req.requester_id === myId
+  const roleLoaded  = role !== ''
+  const isAdmin     = roleLoaded && (role === 'admin' || role === 'auditor')
+  // Use == (loose) to handle int vs string mismatch from API
+  // eslint-disable-next-line eqeqeq
+  const isSelfOwned = myId != null && req.requester_id == myId
 
   return (
     <div style={{
@@ -257,7 +260,7 @@ function RequestCard({ req, role, myId, onRefresh }) {
           title={modal === 'approve' ? 'Approve Request' : 'Reject Request'}
           actionLabel={modal === 'approve' ? 'Approve' : 'Reject'}
           actionColor={modal === 'approve' ? '#22c55e' : '#ef4444'}
-          onConfirm={async (notes) => { await act(modal, 'POST', { notes }); setModal(null) }}
+          onConfirm={async (notes) => { await act(modal, 'post', { notes }); setModal(null) }}
           onClose={() => setModal(null)}
         />
       )}
