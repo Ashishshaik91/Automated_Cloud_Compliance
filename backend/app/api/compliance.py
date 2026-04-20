@@ -33,51 +33,83 @@ async def get_compliance_summary(
     )
     total_accounts = total_accounts_result.scalar() or 0
 
-    # Latest scan per account
-    latest_scan_result = await db.execute(
-        select(ScanResult).order_by(ScanResult.started_at.desc()).limit(1)
-    )
-    latest_scan = latest_scan_result.scalar_one_or_none()
+    FRAMEWORKS = ["pci_dss", "hipaa", "gdpr", "soc2", "nist", "cis", "owasp"]
 
-    # Live score: percentage of passing checks right now
-    pass_result = await db.execute(
-        select(func.count()).select_from(ComplianceCheck).where(
-            ComplianceCheck.status == "pass"
-        )
-    )
-    total_checks_result = await db.execute(
-        select(func.count()).select_from(ComplianceCheck)
-    )
-    passing_checks = pass_result.scalar() or 0
-    total_checks   = total_checks_result.scalar() or 1
-    avg_score = round(100.0 * passing_checks / total_checks, 2)
+    # Get the latest completed scan per framework (mirrors what the dashboard bars show)
+    per_fw_scores: list[float] = []
+    latest_scan_ids: list[int] = []
+    latest_scan_ts = None
 
-    # Critical failures
-    crit_result = await db.execute(
-        select(func.count()).select_from(ComplianceCheck).where(
-            ComplianceCheck.severity == "critical",
-            ComplianceCheck.status == "fail",
+    for fw in FRAMEWORKS:
+        fw_result = await db.execute(
+            select(ScanResult)
+            .where(
+                ScanResult.framework == fw,
+                ScanResult.total_checks > 0,
+            )
+            .order_by(ScanResult.started_at.desc())
+            .limit(1)
         )
-    )
+        fw_scan = fw_result.scalar_one_or_none()
+
+        # Fallback: accept an 'all' scan if no per-framework scan exists
+        if not fw_scan:
+            fw_result2 = await db.execute(
+                select(ScanResult)
+                .where(
+                    ScanResult.framework == "all",
+                    ScanResult.total_checks > 0,
+                )
+                .order_by(ScanResult.started_at.desc())
+                .limit(1)
+            )
+            fw_scan = fw_result2.scalar_one_or_none()
+
+        if fw_scan:
+            per_fw_scores.append(fw_scan.compliance_score)
+            latest_scan_ids.append(fw_scan.id)
+            if latest_scan_ts is None or fw_scan.started_at > latest_scan_ts:
+                latest_scan_ts = fw_scan.started_at
+
+    # Overall score = mean of per-framework scores (same as bars)
+    avg_score = round(sum(per_fw_scores) / len(per_fw_scores), 2) if per_fw_scores else 0.0
+
+    # Critical / high failures across all those latest per-framework scans
+    if latest_scan_ids:
+        crit_result = await db.execute(
+            select(func.count()).select_from(ComplianceCheck).where(
+                ComplianceCheck.scan_id.in_(latest_scan_ids),
+                ComplianceCheck.severity == "critical",
+                ComplianceCheck.status == "fail",
+            )
+        )
+        high_result = await db.execute(
+            select(func.count()).select_from(ComplianceCheck).where(
+                ComplianceCheck.scan_id.in_(latest_scan_ids),
+                ComplianceCheck.severity == "high",
+                ComplianceCheck.status == "fail",
+            )
+        )
+    else:
+        crit_result = await db.execute(select(func.count()).select_from(ComplianceCheck).where(func.false()))
+        high_result = await db.execute(select(func.count()).select_from(ComplianceCheck).where(func.false()))
+
     critical_failures = crit_result.scalar() or 0
-
-    high_result = await db.execute(
-        select(func.count()).select_from(ComplianceCheck).where(
-            ComplianceCheck.severity == "high",
-            ComplianceCheck.status == "fail",
-        )
-    )
-    high_failures = high_result.scalar() or 0
+    high_failures     = high_result.scalar() or 0
 
     return ComplianceSummary(
         total_accounts=total_accounts,
         frameworks_monitored=["pci_dss", "hipaa", "gdpr", "soc2", "nist", "cis", "owasp", "custom"],
-        overall_score=round(avg_score, 2),
+        overall_score=avg_score,
         critical_failures=critical_failures,
         high_failures=high_failures,
-        last_scan_at=latest_scan.started_at if latest_scan else None,
+        last_scan_at=latest_scan_ts,
         trend="stable",
     )
+
+
+
+
 
 
 @router.get("/checks", response_model=list[ComplianceCheckResponse])

@@ -5,9 +5,10 @@ import TerminalWindow from '../components/TerminalWindow'
 export default function Alerts() {
   const [alerts, setAlerts] = useState([])
   const [loading, setLoading] = useState(true)
+  const [saveStatus, setSaveStatus] = useState(null)
   const [integrations, setIntegrations] = useState({
-    slack: { enabled: true, webhook: 'https://hooks.slack.com/.../T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX' },
-    email: { enabled: false, address: 'security@company.com' }
+    slack: { enabled: false, webhook: 'https://hooks.slack.com/.../T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX' },
+    email: { enabled: true,  address: 'm0rphe3ushaik@gmail.com' }
   })
 
   const fetchAlerts = async () => {
@@ -34,6 +35,18 @@ export default function Alerts() {
 
   const toggleIntegration = (type) => {
     setIntegrations(prev => ({ ...prev, [type]: { ...prev[type], enabled: !prev[type].enabled } }))
+  }
+
+  const handleSave = async () => {
+    setSaveStatus('saving')
+    try {
+      // Persist to backend so future alert dispatches use the saved address
+      await api.post('/alerts/test-email', { email: integrations.email.address })
+      setSaveStatus('sent')
+    } catch {
+      setSaveStatus('error')
+    }
+    setTimeout(() => setSaveStatus(null), 4000)
   }
 
   if (loading && alerts.length === 0) return <div className="loading-center" style={{ fontFamily: 'var(--font-mono)' }}>./loading_alerts --tail 20</div>
@@ -120,29 +133,23 @@ export default function Alerts() {
               />
             </div>
 
-            <button 
+            <button
               id="test-btn"
-              onClick={async () => {
-                const btn = document.getElementById('test-btn');
-                btn.innerText = '>> EMITTING_TEST...';
-                try {
-                  await api.post('/alerts/test-email', { email: integrations.email.address });
-                } catch (e) {}
-                btn.innerText = '>> TRIGGER_TEST_SIGNAL';
-              }}
+              onClick={handleSave}
               style={{
                 width: '100%',
-                background: 'none',
-                border: '1px solid var(--color-primary)',
-                color: 'var(--color-primary)',
+                background: saveStatus === 'sent' ? 'rgba(16,185,129,0.15)' : saveStatus === 'error' ? 'rgba(239,68,68,0.15)' : 'none',
+                border: `1px solid ${saveStatus === 'sent' ? 'var(--color-success)' : saveStatus === 'error' ? 'var(--color-danger)' : 'var(--color-primary)'}`,
+                color: saveStatus === 'sent' ? 'var(--color-success)' : saveStatus === 'error' ? 'var(--color-danger)' : 'var(--color-primary)',
                 padding: '10px',
                 fontSize: 11,
                 fontWeight: 900,
                 cursor: 'pointer',
-                fontFamily: 'var(--font-mono)'
+                fontFamily: 'var(--font-mono)',
+                transition: 'all 0.2s ease'
               }}
             >
-              {">> "} TRIGGER_TEST_SIGNAL
+              {saveStatus === 'saving' ? '>> SENDING_TEST...' : saveStatus === 'sent' ? '>> TEST_EMAIL_SENT ✓' : saveStatus === 'error' ? '>> SMTP_ERROR — CHECK_LOGS' : '>> SAVE & SEND TEST EMAIL'}
             </button>
           </div>
         </TerminalWindow>

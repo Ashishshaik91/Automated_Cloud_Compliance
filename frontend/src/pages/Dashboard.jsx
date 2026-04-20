@@ -94,7 +94,7 @@ function RemediateModal({ violation, onClose, onSubmitted }) {
         {result ? (
           <div style={{ padding:'12px 14px', borderRadius:6, background: result.status === 'workflow_submitted' ? 'rgba(99,102,241,0.1)' : 'rgba(34,197,94,0.1)', marginBottom:16 }}>
             <div style={{ color: result.status === 'workflow_submitted' ? '#818cf8' : '#22c55e', fontWeight:700, fontSize:12, marginBottom:4 }}>
-              {result.status === 'workflow_submitted' ? '✓ Approval request submitted' : `✓ ${result.status?.toUpperCase()}`}
+              {result.status === 'workflow_submitted' ? 'Approval request submitted' : `${result.status?.toUpperCase()}`}
             </div>
             {result.workflow_id && <div style={{ fontSize:10, color:'rgba(255,255,255,0.4)' }}>Workflow ID: {result.workflow_id}</div>}
             {result.message    && <div style={{ fontSize:10, color:'rgba(255,255,255,0.5)', marginTop:4 }}>{result.message}</div>}
@@ -403,16 +403,19 @@ export default function Dashboard() {
 
   useEffect(() => { fetchViolationsDspm() }, [])
 
-  const triggerScan = async () => {
+  const triggerScan = async (accountIds = [1, 2], framework = 'all') => {
     setScanning(true)
     try {
-      await Promise.allSettled([
-        api.post('/scans/trigger', { account_id: 1, framework: 'all' }),
-        api.post('/scans/trigger', { account_id: 2, framework: 'all' }),
-      ])
-      setTimeout(fetchData, 4000)
-    } catch { /* ignore */ }
-    setScanning(false)
+      await Promise.allSettled(
+        accountIds.map(id => api.post('/scans/trigger', { account_id: id, framework }))
+      )
+      setTimeout(() => {
+        fetchData()
+        setScanning(false)
+      }, 4000)
+    } catch {
+      setScanning(false)
+    }
   }
 
   const filteredChecks = useMemo(() => {
@@ -462,10 +465,11 @@ export default function Dashboard() {
               <span style={{ color: chip.color, fontWeight: 800 }}>{chip.val}</span>
             </div>
           ))}
-          <button onClick={triggerScan} disabled={scanning} style={{
+          <button onClick={() => triggerScan([1, 2], 'all')} disabled={scanning} style={{
             background: 'none', border: `1px solid ${C.purple}`,
             color: C.purple, padding: '4px 14px',
-            fontSize: 10, ...mono, fontWeight: 800, cursor: 'pointer'
+            fontSize: 10, ...mono, fontWeight: 800, cursor: scanning ? 'not-allowed' : 'pointer',
+            opacity: scanning ? 0.5 : 1,
           }}>
             {scanning ? '> SCANNING...' : '> TRIGGER_SCAN'}
           </button>
@@ -601,7 +605,7 @@ export default function Dashboard() {
               <tbody>
                 {filteredChecks.map((c, i) => {
                    const isFail = c.status === 'fail'
-                   const sevColor = c.severity === 'critical' ? C.red : c.severity === 'high' ? C.orange : c.severity === 'medium' ? C.cyan : C.dim
+                   const sevColor = c.severity === 'critical' ? C.red : c.severity === 'high' ? C.orange : c.severity === 'medium' ? C.cyan : C.purple
                    return (
                    <tr key={c.id} style={{
                      borderBottom: '1px solid rgba(255,255,255,0.03)',
@@ -640,10 +644,10 @@ export default function Dashboard() {
                            }}
                            title={['critical','high'].includes(c.severity) ? 'Submit approval workflow' : 'Execute direct remediation'}
                          >
-                           {['critical','high'].includes(c.severity) ? '⚡APPROVE' : '▶ FIX'}
+                           {['critical','high'].includes(c.severity) ? 'APPROVE' : 'FIX'}
                          </button>
                        ) : (
-                         <span style={{ fontSize: 8, color: C.green, fontFamily: 'var(--font-mono)' }}>✓ PASS</span>
+                         <span style={{ fontSize: 8, color: C.green, fontFamily: 'var(--font-mono)' }}>PASS</span>
                        )}
                      </td>
                    </tr>
@@ -724,7 +728,8 @@ export default function Dashboard() {
           </TerminalWindow>
         </div>
 
-        {/* [2,3] htop-style compliance bars */}
+
+{/* [2,3] htop-style compliance bars */}
         <div style={{ gridColumn: 3, gridRow: 2, display: 'flex', flexDirection: 'column' }}>
           <TerminalWindow title="compliance_scores.htop" accent={C.cyan} style={{ flex: 1 }}>
             <div style={{ fontSize: 9, color: C.dim, ...mono, marginBottom: 12 }}>
@@ -791,7 +796,7 @@ export default function Dashboard() {
                 {violations
                   .filter(v => !violSevFilter || v.severity === violSevFilter)
                   .map((v, i) => {
-                    const sevColor = v.severity === 'critical' ? C.red : v.severity === 'high' ? C.orange : v.severity === 'medium' ? C.cyan : C.dim
+                    const sevColor = v.severity === 'critical' ? C.red : v.severity === 'high' ? C.orange : v.severity === 'medium' ? C.cyan : C.purple
                     const isResolved = v.status !== 'open'
                     return (
                     <tr key={v.id} style={{
@@ -814,16 +819,18 @@ export default function Dashboard() {
                             onClick={() => setRemediateTarget(v)}
                             style={{
                               padding: '2px 8px', fontSize: 8, fontFamily: 'var(--font-mono)',
-                              fontWeight: 800, cursor: 'pointer', border: `1px solid ${sevColor}`,
-                              background: `${sevColor}15`, color: sevColor, borderRadius: 3,
-                              letterSpacing: '0.05em', transition: 'background 0.15s',
+                              fontWeight: 800, cursor: 'pointer',
+                              border: `1px solid ${['critical','high'].includes(v.severity) ? sevColor : v.severity === 'medium' ? C.cyan : C.purple}`,
+                              background: `${['critical','high'].includes(v.severity) ? sevColor : v.severity === 'medium' ? C.cyan : C.purple}15`,
+                              color: ['critical','high'].includes(v.severity) ? sevColor : v.severity === 'medium' ? C.cyan : C.purple,
+                              borderRadius: 3, letterSpacing: '0.05em', transition: 'background 0.15s',
                             }}
                             title={['critical','high'].includes(v.severity) ? 'Submit approval workflow' : 'Execute direct remediation'}
                           >
-                            {['critical','high'].includes(v.severity) ? '⚡APPROVE' : '▶ FIX'}
+                            {['critical','high'].includes(v.severity) ? 'APPROVE' : 'FIX'}
                           </button>
                         ) : (
-                          <span style={{ fontSize: 8, color: C.green, fontFamily: 'var(--font-mono)' }}>✓ DONE</span>
+                          <span style={{ fontSize: 8, color: C.green, fontFamily: 'var(--font-mono)' }}>DONE</span>
                         )}
                       </td>
                     </tr>

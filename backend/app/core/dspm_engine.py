@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.dspm import DSPMFinding, risk_score_to_level
 from app.models.compliance import CloudAccount
 from app.connectors.aws_connector import AWSConnector
+from app.connectors.gcp_connector import GCPConnector
 
 logger = structlog.get_logger(__name__)
 
@@ -184,11 +185,36 @@ def _build_public_endpoint(store_type: str, store_id: str) -> str | None:
     """
     store_type = (store_type or "").lower()
     if store_type in ("s3", "gcs", "blob", "bigquery"):
-        # These are bucket/account names — not an IP, so VT domain check applies.
-        # VT also accepts domain-style strings; bucket names work as identifiers.
         return store_id[:253]  # max domain label length
     return None
 
+# ---------------------------------------------------------------------------
+# Classification helper
+# ---------------------------------------------------------------------------
+
+def _classify_by_name(
+    name: str,
+    default_cls: str = "CONFIDENTIAL",
+    default_sens: str = "medium",
+) -> tuple[str, str]:
+    """
+    Infer data classification and sensitivity level from a store name/ID.
+    Returns (classifications_csv, sensitivity_level).
+    """
+    n = name.lower()
+    if "pii" in n or "pci" in n or "payment" in n or "card" in n:
+        return "PII,PCI", "critical"
+    if "phi" in n or "medical" in n or "hipaa" in n or "health" in n or "patient" in n:
+        return "PHI,HIPAA", "high"
+    if "gdpr" in n or "eu-" in n or "eu_" in n or "privacy" in n:
+        return "GDPR,PII", "high"
+    if "prod" in n or "production" in n or "live" in n:
+        return "PII,PCI", "critical"
+    if "exposed" in n or "backup" in n or "legacy" in n or "archive" in n:
+        return "PII,PCI", "critical"
+    if "test" in n or "dev" in n or "staging" in n or "synthetic" in n or "demo" in n:
+        return "UNKNOWN", "low"
+    return default_cls, default_sens
 
 
 # ---------------------------------------------------------------------------
@@ -201,11 +227,10 @@ async def run_dspm_engine(
     enrich: bool = True,
 ) -> int:
     """
-    Upsert DSPMFinding rows from live AWS environments.
-    Optionally enriches with threat intel (enrich=True by default).
-    Returns the number of newly created rows.
+    Scan all active cloud accounts (AWS + GCP) for sensitive data stores.
+    Classifies by name/type keywords, computes risk scores, and optionally
+    enriches with threat intel. Returns count of newly created findings.
     """
-    # Clean up old data
     await db.execute(delete(DSPMFinding))
     await db.flush()
 
@@ -213,109 +238,135 @@ async def run_dspm_engine(
     accounts = (await db.execute(select(CloudAccount).where(CloudAccount.is_active == True))).scalars().all()
 
     for account in accounts:
-        if account.provider != "aws":
-            continue
-            
+        live_stores: list[dict] = []
+
         try:
-            conn = AWSConnector({
-                "id": account.id,
-                "account_id": account.account_id,
-                "region": account.region or "us-east-1",
-            })
-            
-            buckets = conn._get_s3_buckets()
-            rds_instances = conn._get_rds_instances()
-            
-            # Unify into stores list
-            live_stores = []
-            
-            for b in buckets:
-                name = b["resource_id"]
-                classifications = "CONFIDENTIAL"
-                sensitivity = "medium"
-                if "prod" in name.lower() or "pii" in name.lower():
-                    classifications = "PII,PCI"
-                    sensitivity = "critical"
-                elif "test" in name.lower() or "dev" in name.lower():
-                    classifications = "UNKNOWN"
-                    sensitivity = "low"
-                    
-                encrypted = "encrypted" if b["details"].get("encrypted", False) else "unencrypted"
-                
-                live_stores.append({
-                    "data_store_id": name,
-                    "data_store_name": f"S3 {name}",
-                    "data_store_type": "s3",
-                    "cloud_provider": "aws",
-                    "account_id": account.account_id,
-                    "region": account.region or "us-east-1",
-                    "classifications": classifications,
-                    "sensitivity": sensitivity,
-                    "public_access": not b["details"].get("public_access_blocked", True),
-                    "encryption_status": encrypted,
-                })
-                
-            for r in rds_instances:
-                name = r["resource_id"]
-                classifications = "PHI,HIPAA"
-                sensitivity = "high"
-                if "prod" in name.lower():
-                    sensitivity = "critical"
-                
-                encrypted = "encrypted" if r["details"].get("encrypted", False) else "unencrypted"
-                
-                live_stores.append({
-                    "data_store_id": name,
-                    "data_store_name": f"RDS {name}",
-                    "data_store_type": "rds",
-                    "cloud_provider": "aws",
-                    "account_id": account.account_id,
-                    "region": account.region or "us-east-1",
-                    "classifications": classifications,
-                    "sensitivity": sensitivity,
-                    "public_access": r["details"].get("publicly_accessible", False),
-                    "encryption_status": encrypted,
-                })
-                
-            for store in live_stores:
-                urn = _make_dspm_urn(
-                    store["cloud_provider"], store["account_id"],
-                    store["data_store_type"], store["data_store_id"]
-                )
+            # ── AWS: S3 + RDS ────────────────────────────────────────────
+            if account.provider == "aws":
+                conn = AWSConnector(account)
+                buckets = conn._get_s3_buckets()
+                rds_instances = conn._get_rds_instances()
 
-                base_score = _compute_base_score(
-                    store["sensitivity"], store["public_access"], store["encryption_status"]
-                )
+                for b in buckets:
+                    name = b["resource_id"]
+                    cls, sens = _classify_by_name(name)
+                    encrypted = "encrypted" if b.get("encryption_enabled", False) else "unencrypted"
+                    live_stores.append({
+                        "data_store_id":   name,
+                        "data_store_name": f"S3 {name}",
+                        "data_store_type": "s3",
+                        "cloud_provider":  "aws",
+                        "account_id":      account.account_id,
+                        "region":          account.region or "us-east-1",
+                        "classifications": cls,
+                        "sensitivity":     sens,
+                        "public_access":   not b.get("public_access_blocked", True),
+                        "encryption_status": encrypted,
+                    })
 
-                new_finding = DSPMFinding(
-                    data_store_urn     = urn,
-                    data_store_id      = store["data_store_id"],
-                    data_store_name    = store["data_store_name"],
-                    data_store_type    = store["data_store_type"],
-                    cloud_provider     = store["cloud_provider"],
-                    region             = store.get("region"),
-                    account_id         = store.get("account_id"),
-                    classifications    = store["classifications"],
-                    sensitivity        = store["sensitivity"],
-                    public_access      = store["public_access"],
-                    encryption_status  = store["encryption_status"],
-                    risk_score         = base_score,
-                    risk_level         = risk_score_to_level(base_score),
-                )
-                db.add(new_finding)
-                await db.flush()   # get ID for logging
+                for r in rds_instances:
+                    name = r["resource_id"]
+                    cls, sens = _classify_by_name(name, default_cls="PHI,HIPAA", default_sens="high")
+                    encrypted = "encrypted" if r.get("encrypted", False) else "unencrypted"
+                    live_stores.append({
+                        "data_store_id":   name,
+                        "data_store_name": f"RDS {name}",
+                        "data_store_type": "rds",
+                        "cloud_provider":  "aws",
+                        "account_id":      account.account_id,
+                        "region":          account.region or "us-east-1",
+                        "classifications": cls,
+                        "sensitivity":     sens,
+                        "public_access":   r.get("publicly_accessible", False),
+                        "encryption_status": encrypted,
+                    })
 
-                if enrich:
-                    boost, boost_reason = await enrich_with_threat_intel(new_finding, redis_client)
-                    final_score = min(100.0, max(0.0, base_score + boost))
-                    new_finding.risk_score = final_score
-                    new_finding.risk_level = risk_score_to_level(final_score)
+            # ── GCP: GCS + Cloud SQL ─────────────────────────────────────
+            elif account.provider == "gcp":
+                conn = GCPConnector(account)
+                gcs_buckets   = conn._get_gcs_buckets()
+                cloud_sql     = conn._get_cloud_sql_instances()
 
-                created += 1
+                for b in gcs_buckets:
+                    name = b["resource_id"]
+                    cls, sens = _classify_by_name(name)
+                    # GCS: uniform_bucket_level_access = True means no public ACLs
+                    public_blocked = b.get("uniform_bucket_level_access", False) or b.get("public_access_blocked", False)
+                    live_stores.append({
+                        "data_store_id":   name,
+                        "data_store_name": f"GCS {name}",
+                        "data_store_type": "gcs",
+                        "cloud_provider":  "gcp",
+                        "account_id":      account.account_id,
+                        "region":          b.get("location") or account.region or "us-central1",
+                        "classifications": cls,
+                        "sensitivity":     sens,
+                        "public_access":   not public_blocked,
+                        "encryption_status": "encrypted",  # GCS always encrypts at rest
+                    })
+
+                for sql in cloud_sql:
+                    name = sql["resource_id"]
+                    cls, sens = _classify_by_name(name, default_cls="PHI,HIPAA", default_sens="high")
+                    # If authorized_networks contains 0.0.0.0/0, it's publicly accessible
+                    auth_nets = sql.get("authorized_networks", [])
+                    public = any(n.get("value") == "0.0.0.0/0" for n in auth_nets if isinstance(n, dict))
+                    live_stores.append({
+                        "data_store_id":   name,
+                        "data_store_name": f"CloudSQL {name}",
+                        "data_store_type": "cloud_sql",
+                        "cloud_provider":  "gcp",
+                        "account_id":      account.account_id,
+                        "region":          account.region or "us-central1",
+                        "classifications": cls,
+                        "sensitivity":     sens,
+                        "public_access":   public,
+                        "encryption_status": "encrypted",  # Cloud SQL encrypts at rest
+                    })
+
+            else:
+                # Azure or other — skip for now
+                continue
 
         except Exception as e:
             logger.error(f"Failed to process DSPM for account {account.account_id}", error=str(e))
             continue
+
+        # ── Persist findings ──────────────────────────────────────────────────
+        for store in live_stores:
+            urn = _make_dspm_urn(
+                store["cloud_provider"], store["account_id"],
+                store["data_store_type"], store["data_store_id"]
+            )
+            base_score = _compute_base_score(
+                store["sensitivity"], store["public_access"], store["encryption_status"]
+            )
+            new_finding = DSPMFinding(
+                data_store_urn    = urn,
+                data_store_id     = store["data_store_id"],
+                data_store_name   = store["data_store_name"],
+                data_store_type   = store["data_store_type"],
+                cloud_provider    = store["cloud_provider"],
+                region            = store.get("region"),
+                account_id        = store.get("account_id"),
+                cloud_account_id  = account.id,
+                classifications   = store["classifications"],
+                sensitivity       = store["sensitivity"],
+                public_access     = store["public_access"],
+                encryption_status = store["encryption_status"],
+                risk_score        = base_score,
+                risk_level        = risk_score_to_level(base_score),
+            )
+            db.add(new_finding)
+            await db.flush()
+
+            if enrich:
+                boost, _ = await enrich_with_threat_intel(new_finding, redis_client)
+                final_score = min(100.0, max(0.0, base_score + boost))
+                new_finding.risk_score = final_score
+                new_finding.risk_level = risk_score_to_level(final_score)
+
+            created += 1
 
     await db.flush()
     logger.info("DSPM engine run complete", new=created)

@@ -23,6 +23,7 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
       - OPA_URL=${OPA_URL}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/compliance-reader-9818c46a758f.json
     ports:
       - "8000:8000"
     depends_on:
@@ -55,6 +56,8 @@ services:
     restart: unless-stopped
     command: celery -A app.core.celery_app worker --loglevel=info --concurrency=4
     env_file: .env
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/compliance-reader-9818c46a758f.json
     depends_on:
       - backend
       - redis
@@ -78,6 +81,8 @@ services:
     restart: unless-stopped
     command: celery -A app.core.celery_app beat --loglevel=info --scheduler celery.beat:PersistentScheduler
     env_file: .env
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/compliance-reader-9818c46a758f.json
     depends_on:
       - celery_worker
     networks:

@@ -1,0 +1,70 @@
+# ============================================================
+#  GCP Compliance Policies — PCI-DSS
+# ============================================================
+
+policies:
+
+  # PCI-DSS Req 1.3 — Restrict public network access
+  - id: pci-gcp-gcs-no-public
+    name: "PCI-DSS: GCS Bucket Must Block Public Access"
+    resource_type: gcs_bucket
+    framework: pci_dss
+    severity: critical
+    opa_package: "compliance.generic"
+    rules:
+      - field: public_access_blocked
+        operator: is_true
+    remediation: "Set public_access_prevention to 'enforced' on all GCS buckets storing cardholder data."
+    reference: "PCI-DSS v4.0 Req 1.3.2"
+
+  # PCI-DSS Req 1.2 — Network access controls
+  - id: pci-gcp-fw-no-open-ingress
+    name: "PCI-DSS: GCP Firewall Must Not Allow All Ingress"
+    resource_type: gcp_firewall_rule
+    framework: pci_dss
+    severity: critical
+    opa_package: "compliance.generic"
+    rules:
+      - field: allows_all_ingress
+        operator: is_false
+    remediation: "Remove catch-all firewall rules that permit ingress from 0.0.0.0/0 on all protocols."
+    reference: "PCI-DSS v4.0 Req 1.2.1"
+
+  # PCI-DSS Req 4.2 — Encrypt transmission of cardholder data
+  - id: pci-gcp-sql-require-ssl
+    name: "PCI-DSS: Cloud SQL Must Require SSL/TLS Connections"
+    resource_type: gcp_cloud_sql
+    framework: pci_dss
+    severity: critical
+    opa_package: "compliance.generic"
+    rules:
+      - field: ip_configuration_require_ssl
+        operator: is_true
+    remediation: "Enable requireSsl on the Cloud SQL instance to enforce encrypted connections."
+    reference: "PCI-DSS v4.0 Req 4.2.1"
+
+  # PCI-DSS Req 10.2 — Audit trails
+  - id: pci-gcp-audit-logs
+    name: "PCI-DSS: GCP Project Audit Logs Must Be Enabled"
+    resource_type: gcp_audit_log_config
+    framework: pci_dss
+    severity: high
+    opa_package: "compliance.generic"
+    rules:
+      - field: audit_logs_enabled
+        operator: is_true
+    remediation: "Enable DATA_READ, DATA_WRITE, and ADMIN_READ audit logs for all critical GCP services."
+    reference: "PCI-DSS v4.0 Req 10.2"
+
+  # PCI-DSS Req 1.3 — Database not publicly accessible
+  - id: pci-gcp-sql-not-public
+    name: "PCI-DSS: Cloud SQL Must Not Be Publicly Accessible"
+    resource_type: gcp_cloud_sql
+    framework: pci_dss
+    severity: critical
+    opa_package: "compliance.generic"
+    rules:
+      - field: publicly_accessible
+        operator: is_false
+    remediation: "Remove 0.0.0.0/0 from Cloud SQL authorized_networks and use Cloud SQL Auth Proxy instead."
+    reference: "PCI-DSS v4.0 Req 1.3"

@@ -334,9 +334,54 @@ async def _async_scheduled_scan(
             terraform_working_dir=terraform_working_dir,
         )
         await db.commit()
+
+        # ── Fire email alert after every scan ───────────────────────────────
+        try:
+            from sqlalchemy import select as sa_select
+            from app.models.compliance import ComplianceCheck
+            from app.core.email_alerts import dispatch_scan_alert
+
+            # Fetch the top 10 failing checks for this scan (critical first)
+            sev_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+            fail_result = await db.execute(
+                sa_select(ComplianceCheck)
+                .where(
+                    ComplianceCheck.scan_id == scan.id,
+                    ComplianceCheck.status == "fail",
+                )
+                .limit(50)
+            )
+            failing_checks = fail_result.scalars().all()
+            # Sort critical → high → medium → low
+            failing_checks.sort(key=lambda c: sev_order.get(c.severity or "low", 3))
+            top_failures = [
+                {
+                    "policy_name": c.policy_name,
+                    "severity":    c.severity,
+                    "resource_id": c.resource_id,
+                }
+                for c in failing_checks[:10]
+            ]
+
+            await dispatch_scan_alert(
+                scan_id=scan.id,
+                account_name=account.name,
+                provider=account.provider,
+                framework=framework,
+                score=scan.compliance_score,
+                total_checks=scan.total_checks,
+                passed_checks=scan.passed_checks,
+                failed_checks=scan.failed_checks,
+                top_failures=top_failures,
+            )
+        except Exception as alert_exc:
+            # Never let an email failure crash the scan result
+            logger.error("Scan alert email dispatch failed", error=str(alert_exc))
+
         return {
             "scan_id":          scan.id,
             "compliance_score": scan.compliance_score,
             "total_checks":     scan.total_checks,
             "organization_id":  organization_id,
         }
+

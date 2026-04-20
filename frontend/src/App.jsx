@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react'
-import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom'
+import React, { useState, useEffect, useRef } from 'react'
+import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
 import { 
   Menu,
   Shield, 
@@ -77,6 +77,37 @@ const useAuth = () => {
 function RoleRoute({ element, minRole, userRole }) {
   if (ROLE_RANK[userRole] >= ROLE_RANK[minRole]) return element
   return <Navigate to="/dashboard" replace />
+}
+
+// ─── Page transition wrapper ────────────────────────────────────────────────────
+
+function PageTransition({ children }) {
+  const location = useLocation()
+  const [displayLocation, setDisplayLocation] = useState(location)
+  const [transitionStage, setTransitionStage] = useState('page-enter')
+
+  useEffect(() => {
+    if (location.pathname !== displayLocation.pathname) {
+      setTransitionStage('page-exit')
+    }
+  }, [location, displayLocation])
+
+  const handleAnimationEnd = () => {
+    if (transitionStage === 'page-exit') {
+      setDisplayLocation(location)
+      setTransitionStage('page-enter')
+    }
+  }
+
+  return (
+    <div
+      className={transitionStage}
+      onAnimationEnd={handleAnimationEnd}
+      style={{ minHeight: 0 }}
+    >
+      {children}
+    </div>
+  )
 }
 
 const StatusBar = ({ logout, role, theme, setTheme }) => {
@@ -180,18 +211,20 @@ export default function App() {
           setTheme={setTheme}
         />
         <main style={{ flex: 1, padding: 24, zoom: 1.25 }}>
-          <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/scans"     element={<RoleRoute element={<Scans />}       minRole="dev"     userRole={role} />} />
-            <Route path="/reports"   element={<RoleRoute element={<Reports />}     minRole="auditor" userRole={role} />} />
-            <Route path="/policies"  element={<RoleRoute element={<Policies />}    minRole="dev"     userRole={role} />} />
-            <Route path="/alerts"    element={<RoleRoute element={<Alerts />}      minRole="dev"     userRole={role} />} />
-            <Route path="/accounts"  element={<RoleRoute element={<Accounts />}   minRole="dev"     userRole={role} />} />
-            <Route path="/workflows" element={<RoleRoute element={<Workflows />}  minRole="dev"     userRole={role} />} />
-            <Route path="/admin"     element={<RoleRoute element={<Admin role={role} />} minRole="admin" userRole={role} />} />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          </Routes>
+          <PageTransition>
+            <Routes>
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/scans"     element={<RoleRoute element={<Scans />}       minRole="dev"     userRole={role} />} />
+              <Route path="/reports"   element={<RoleRoute element={<Reports />}     minRole="auditor" userRole={role} />} />
+              <Route path="/policies"  element={<RoleRoute element={<Policies />}    minRole="dev"     userRole={role} />} />
+              <Route path="/alerts"    element={<RoleRoute element={<Alerts />}      minRole="dev"     userRole={role} />} />
+              <Route path="/accounts"  element={<RoleRoute element={<Accounts />}   minRole="dev"     userRole={role} />} />
+              <Route path="/workflows" element={<RoleRoute element={<Workflows />}  minRole="dev"     userRole={role} />} />
+              <Route path="/admin"     element={<RoleRoute element={<Admin role={role} />} minRole="admin" userRole={role} />} />
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
+          </PageTransition>
         </main>
       </div>
     </BrowserRouter>

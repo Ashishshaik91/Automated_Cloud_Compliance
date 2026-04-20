@@ -1,0 +1,187 @@
+# ============================================================
+#  GCP Compliance Policies — CIS Benchmarks
+#  Evaluated by CaCEngine against GCPConnector resource output
+# ============================================================
+
+policies:
+
+  # ── GCS Buckets ──────────────────────────────────────────────────────────
+
+  # CIS GCP 5.1 — Uniform bucket-level access
+  - id: gcp-gcs-uniform-access
+    name: "GCP CIS: GCS Bucket Must Enable Uniform Bucket-Level Access"
+    resource_type: gcs_bucket
+    framework: cis
+    severity: high
+    opa_package: "compliance.generic"
+    rules:
+      - field: uniform_bucket_level_access
+        operator: is_true
+    remediation: "Enable uniformBucketLevelAccess on the bucket. This removes legacy per-object ACLs."
+    reference: "CIS GCP Benchmark v1.3 §5.1"
+
+  # CIS GCP 5.2 — Bucket public access prevention
+  - id: gcp-gcs-no-public-access
+    name: "GCP CIS: GCS Bucket Must Block Public Access"
+    resource_type: gcs_bucket
+    framework: cis
+    severity: critical
+    opa_package: "compliance.generic"
+    rules:
+      - field: public_access_blocked
+        operator: is_true
+    remediation: "Set public_access_prevention to 'enforced' on the bucket."
+    reference: "CIS GCP Benchmark v1.3 §5.2"
+
+  # CIS GCP 5.3 — Bucket versioning
+  - id: gcp-gcs-versioning-enabled
+    name: "GCP CIS: GCS Bucket Should Enable Versioning"
+    resource_type: gcs_bucket
+    framework: cis
+    severity: medium
+    opa_package: "compliance.generic"
+    rules:
+      - field: versioning_enabled
+        operator: is_true
+    remediation: "Enable versioning on the GCS bucket to protect against accidental deletion."
+    reference: "CIS GCP Benchmark v1.3 §5.3"
+
+  # ── Compute Instances ────────────────────────────────────────────────────
+
+  # CIS GCP 4.6 — IP forwarding should be disabled
+  - id: gcp-compute-no-ip-forward
+    name: "GCP CIS: Compute Instance Must Not Enable IP Forwarding"
+    resource_type: gcp_compute_instance
+    framework: cis
+    severity: high
+    opa_package: "compliance.generic"
+    rules:
+      - field: can_ip_forward
+        operator: is_false
+    remediation: "Recreate the instance with can_ip_forward=false. IP forwarding allows instances to route traffic, enabling MITM attacks."
+    reference: "CIS GCP Benchmark v1.3 §4.6"
+
+  # CIS GCP 4.8 — Shielded VM
+  - id: gcp-compute-shielded-vm
+    name: "GCP CIS: Compute Instance Must Use Shielded VM"
+    resource_type: gcp_compute_instance
+    framework: cis
+    severity: medium
+    opa_package: "compliance.generic"
+    rules:
+      - field: shielded_vm
+        operator: is_true
+    remediation: "Enable Shielded VM features (Secure Boot, vTPM, Integrity Monitoring) on the instance."
+    reference: "CIS GCP Benchmark v1.3 §4.8"
+
+  # CIS GCP 4.9 — Deletion protection
+  - id: gcp-compute-deletion-protection
+    name: "GCP CIS: Compute Instance Should Enable Deletion Protection"
+    resource_type: gcp_compute_instance
+    framework: cis
+    severity: low
+    opa_package: "compliance.generic"
+    rules:
+      - field: deletion_protection
+        operator: is_true
+    remediation: "Enable deletion_protection on the Compute Instance to prevent accidental termination."
+    reference: "CIS GCP Benchmark v1.3 §4.9"
+
+  # ── Firewall Rules ───────────────────────────────────────────────────────
+
+  # CIS GCP 3.6 — No firewall rules allowing all ingress from 0.0.0.0/0
+  - id: gcp-fw-no-unrestricted-ingress
+    name: "GCP CIS: Firewall Rule Must Not Allow All Ingress from Any Source"
+    resource_type: gcp_firewall_rule
+    framework: cis
+    severity: critical
+    opa_package: "compliance.generic"
+    rules:
+      - field: allows_all_ingress
+        operator: is_false
+    remediation: "Remove or restrict the catch-all firewall rule. Replace 0.0.0.0/0 source with specific CIDR ranges and limit to required ports only."
+    reference: "CIS GCP Benchmark v1.3 §3.6"
+
+  # CIS GCP 3.7 — Firewall rules should not allow unrestricted public ingress
+  - id: gcp-fw-no-public-ingress
+    name: "GCP CIS: Firewall Rule Must Not Allow Public Ingress"
+    resource_type: gcp_firewall_rule
+    framework: cis
+    severity: high
+    opa_package: "compliance.generic"
+    rules:
+      - field: allows_public_ingress
+        operator: is_false
+    remediation: "Restrict source ranges on ingress firewall rules. Avoid 0.0.0.0/0 or ::/0."
+    reference: "CIS GCP Benchmark v1.3 §3.7"
+
+  # ── IAM Policies ─────────────────────────────────────────────────────────
+
+  # CIS GCP 1.7 — No public IAM bindings
+  - id: gcp-iam-no-public-bindings
+    name: "GCP CIS: IAM Policy Must Not Grant Access to allUsers or allAuthenticatedUsers"
+    resource_type: gcp_iam_policy
+    framework: cis
+    severity: critical
+    opa_package: "compliance.generic"
+    rules:
+      - field: has_public_bindings
+        operator: is_false
+    remediation: "Remove IAM bindings for allUsers and allAuthenticatedUsers. Grant access only to specific service accounts or user identities."
+    reference: "CIS GCP Benchmark v1.3 §1.7"
+
+  # ── Audit Log Config ─────────────────────────────────────────────────────
+
+  # CIS GCP 2.1 — Cloud Audit Logs should be configured for all services
+  - id: gcp-audit-logs-enabled
+    name: "GCP CIS: Project Audit Logs Must Be Enabled for Critical Services"
+    resource_type: gcp_audit_log_config
+    framework: cis
+    severity: high
+    opa_package: "compliance.generic"
+    rules:
+      - field: audit_logs_enabled
+        operator: is_true
+    remediation: "Enable DATA_READ, DATA_WRITE, and ADMIN_READ audit logs for storage.googleapis.com, compute.googleapis.com, iam.googleapis.com, and cloudresourcemanager.googleapis.com."
+    reference: "CIS GCP Benchmark v1.3 §2.1"
+
+  # ── Cloud SQL ────────────────────────────────────────────────────────────
+
+  # CIS GCP 6.2 — Cloud SQL should require SSL
+  - id: gcp-sql-require-ssl
+    name: "GCP CIS: Cloud SQL Instance Must Require SSL Connections"
+    resource_type: gcp_cloud_sql
+    framework: cis
+    severity: high
+    opa_package: "compliance.generic"
+    rules:
+      - field: ip_configuration_require_ssl
+        operator: is_true
+    remediation: "Enable requireSsl on the Cloud SQL instance IP configuration to enforce encrypted connections."
+    reference: "CIS GCP Benchmark v1.3 §6.2"
+
+  # CIS GCP 6.7 — Cloud SQL backups should be enabled
+  - id: gcp-sql-backup-enabled
+    name: "GCP CIS: Cloud SQL Instance Must Enable Automated Backups"
+    resource_type: gcp_cloud_sql
+    framework: cis
+    severity: medium
+    opa_package: "compliance.generic"
+    rules:
+      - field: backup_enabled
+        operator: is_true
+    remediation: "Enable automated backups on the Cloud SQL instance settings."
+    reference: "CIS GCP Benchmark v1.3 §6.7"
+
+  # CIS GCP 6.5 — Cloud SQL should not be publicly accessible
+  - id: gcp-sql-not-public
+    name: "GCP CIS: Cloud SQL Instance Must Not Be Publicly Accessible"
+    resource_type: gcp_cloud_sql
+    framework: cis
+    severity: critical
+    opa_package: "compliance.generic"
+    rules:
+      - field: publicly_accessible
+        operator: is_false
+    remediation: "Remove the 0.0.0.0/0 entry from authorized_networks and restrict to known IP ranges or use Cloud SQL Auth Proxy."
+    reference: "CIS GCP Benchmark v1.3 §6.5"

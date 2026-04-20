@@ -116,8 +116,20 @@ export default function Policies() {
   const [showBuilder, setShowBuilder] = useState(false)
   const [customForm, setCustomForm] = useState({ name: '', resource_type: '', severity: 'high', field: '', operator: 'is_true' })
   const [building, setBuilding] = useState(false)
+  const [policySearch,  setPolicySearch]  = useState('')
+  const [policySevFilter, setPolicySevFilter] = useState(null)
   const role = getUserRole()
   const canCreate = ['admin', 'auditor'].includes(role)
+
+  // filtered view of the selected framework's policies
+  const filteredPolicies = selected.policies.filter(p => {
+    const matchSev   = !policySevFilter || p.severity === policySevFilter
+    const matchText  = !policySearch    ||
+      p.name?.toLowerCase().includes(policySearch.toLowerCase()) ||
+      p.id?.toLowerCase().includes(policySearch.toLowerCase())   ||
+      p.resource_type?.toLowerCase().includes(policySearch.toLowerCase())
+    return matchSev && matchText
+  })
 
   const handleCreatePolicy = async (e) => {
     e.preventDefault()
@@ -178,7 +190,12 @@ export default function Policies() {
           {frameworks.map(f => (
             <div
               key={f.id}
-              onClick={() => { setSelected(f); setShowBuilder(false); }}
+              onClick={() => {
+                setSelected(f)
+                setShowBuilder(false)
+                setPolicySearch('')
+                setPolicySevFilter(null)
+              }}
               style={{
                 cursor: 'pointer',
                 padding: '12px 16px',
@@ -264,6 +281,51 @@ export default function Policies() {
           </TerminalWindow>
         ) : (
           <TerminalWindow title={`${selected.id}_v2_manifest.yaml`}>
+            {/* ── Filter bar ── */}
+            {!showBuilder && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+                {/* text search */}
+                <input
+                  type="text"
+                  placeholder="Search policies..."
+                  value={policySearch}
+                  onChange={e => setPolicySearch(e.target.value)}
+                  style={{
+                    flex: 1, minWidth: 140, padding: '5px 10px',
+                    background: 'rgba(255,255,255,0.05)',
+                    border: '1px solid var(--color-border)',
+                    color: 'var(--color-text)', fontSize: 11,
+                    fontFamily: 'var(--font-mono)', outline: 'none'
+                  }}
+                />
+                {/* severity filter pills */}
+                {['critical','high','medium','low'].map(sev => {
+                  const clr = sev === 'critical' ? 'var(--color-danger)'
+                            : sev === 'high'     ? 'var(--color-warning)'
+                            : sev === 'medium'   ? 'var(--color-info)'
+                            : 'var(--color-text-dim)'
+                  const active = policySevFilter === sev
+                  const cnt = selected.policies.filter(p => p.severity === sev).length
+                  return (
+                    <button key={sev} onClick={() => setPolicySevFilter(prev => prev === sev ? null : sev)}
+                      style={{
+                        padding: '3px 10px', fontSize: 9, fontFamily: 'var(--font-mono)',
+                        fontWeight: 800, cursor: 'pointer', border: `1px solid ${clr}`,
+                        background: active ? `${clr}22` : 'none',
+                        color: active ? clr : 'var(--color-text-dim)',
+                        borderRadius: 2, transition: 'all 0.15s'
+                      }}
+                    >
+                      {sev.toUpperCase()} ({cnt})
+                    </button>
+                  )
+                })}
+                <div style={{ fontSize: 9, color: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)', marginLeft: 'auto' }}>
+                  {filteredPolicies.length}/{selected.policies.length} SHOWN
+                </div>
+              </div>
+            )}
+
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24, borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: 16 }}>
               <span style={{ color: 'var(--color-primary)', opacity: 0.8 }}>{React.cloneElement(selected.icon, { size: 32 })}</span>
               <div style={{ flex: 1 }}>
@@ -295,9 +357,9 @@ export default function Policies() {
                   </tr>
                 </thead>
                 <tbody>
-                  {selected.policies.length === 0 ? (
+                  {filteredPolicies.length === 0 ? (
                     <tr><td colSpan="4" style={{textAlign:'center', padding: '40px', color: 'var(--color-text-dim)'}}>[ NO_RECORDS ]</td></tr>
-                  ) : selected.policies.map(p => (
+                  ) : filteredPolicies.map(p => (
                     <tr key={p.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
                       <td style={{ padding: '10px 4px', color: 'var(--color-text-dim)' }}>{p.id}</td>
                       <td style={{ padding: '10px 4px', fontWeight: 700 }}>{p.name?.toUpperCase()}</td>
