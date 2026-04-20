@@ -66,14 +66,14 @@ function SubmitModal({ onClose, onSubmitted }) {
     }}>
       <div style={{
         background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-        borderRadius: 12, padding: 28, width: 500, maxWidth: '95vw',
+        borderRadius: 12, padding: 32, width: 550, maxWidth: '95vw',
       }}>
-        <h3 style={{ margin: '0 0 20px', color: 'var(--color-text)', fontSize: 16 }}>
+        <h3 style={{ margin: '0 0 24px', color: 'var(--color-text)', fontSize: 18 }}>
           Submit Approval Request
         </h3>
 
         {error && (
-          <div style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '8px 12px', borderRadius: 6, marginBottom: 14, fontSize: 13 }}>
+          <div style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '12px 16px', borderRadius: 6, marginBottom: 16, fontSize: 14 }}>
             {error}
           </div>
         )}
@@ -82,43 +82,43 @@ function SubmitModal({ onClose, onSubmitted }) {
           { label: 'Title *', key: 'title', type: 'text' },
           { label: 'Description', key: 'description', type: 'textarea' },
         ].map(({ label, key, type }) => (
-          <div key={key} style={{ marginBottom: 14 }}>
-            <label style={{ display: 'block', fontSize: 12, color: 'var(--color-text-dim)', marginBottom: 4 }}>{label}</label>
+          <div key={key} style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontSize: 13, color: 'var(--color-text-dim)', marginBottom: 6 }}>{label}</label>
             {type === 'textarea' ? (
               <textarea
                 rows={3}
                 value={form[key]}
                 onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                style={{ width: '100%', background: 'var(--color-bg)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '8px 10px', color: 'var(--color-text)', fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }}
+                style={{ width: '100%', background: 'var(--color-bg)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '10px 14px', color: 'var(--color-text)', fontSize: 14, resize: 'vertical', boxSizing: 'border-box' }}
               />
             ) : (
               <input
                 type="text"
                 value={form[key]}
                 onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                style={{ width: '100%', background: 'var(--color-bg)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '8px 10px', color: 'var(--color-text)', fontSize: 13, boxSizing: 'border-box' }}
+                style={{ width: '100%', background: 'var(--color-bg)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '10px 14px', color: 'var(--color-text)', fontSize: 14, boxSizing: 'border-box' }}
               />
             )}
           </div>
         ))}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 24 }}>
           {[
             { label: 'Action Type', key: 'action_type', options: ['remediation','policy_change','account_delete','mfa_bypass'] },
             { label: 'Risk Level',  key: 'risk_level',  options: ['medium','high','critical'] },
             { label: 'Expires in (hrs)', key: 'expiry_hours', type: 'number' },
           ].map(({ label, key, options, type }) => (
             <div key={key}>
-              <label style={{ display: 'block', fontSize: 12, color: 'var(--color-text-dim)', marginBottom: 4 }}>{label}</label>
+              <label style={{ display: 'block', fontSize: 13, color: 'var(--color-text-dim)', marginBottom: 6 }}>{label}</label>
               {options ? (
                 <select value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                  style={{ width: '100%', background: 'var(--color-bg)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '7px 10px', color: 'var(--color-text)', fontSize: 13 }}>
+                  style={{ width: '100%', background: 'var(--color-bg)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '9px 12px', color: 'var(--color-text)', fontSize: 14 }}>
                   {options.map(o => <option key={o} value={o}>{o}</option>)}
                 </select>
               ) : (
                 <input type="number" min={1} max={168} value={form[key]}
                   onChange={e => setForm(f => ({ ...f, [key]: parseInt(e.target.value) || 24 }))}
-                  style={{ width: '100%', background: 'var(--color-bg)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '7px 10px', color: 'var(--color-text)', fontSize: 13, boxSizing: 'border-box' }}
+                  style={{ width: '100%', background: 'var(--color-bg)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '9px 12px', color: 'var(--color-text)', fontSize: 14, boxSizing: 'border-box' }}
                 />
               )}
             </div>
@@ -126,10 +126,10 @@ function SubmitModal({ onClose, onSubmitted }) {
         </div>
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} style={{ padding: '8px 18px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-dim)', cursor: 'pointer', fontSize: 13 }}>
+          <button onClick={onClose} style={{ padding: '9px 20px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-dim)', cursor: 'pointer', fontSize: 14 }}>
             Cancel
           </button>
-          <button onClick={submit} disabled={loading} style={{ padding: '8px 18px', borderRadius: 6, border: 'none', background: 'var(--color-primary)', color: '#000', cursor: loading ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 700, opacity: loading ? 0.6 : 1 }}>
+          <button onClick={submit} disabled={loading} style={{ padding: '9px 24px', borderRadius: 6, border: 'none', background: 'var(--color-primary)', color: '#000', cursor: loading ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 700, opacity: loading ? 0.6 : 1 }}>
             {loading ? 'Submitting...' : 'Submit Request'}
           </button>
         </div>
@@ -153,13 +153,13 @@ function NotesModal({ title, actionLabel, actionColor, onConfirm, onClose }) {
 
   return createPortal(
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1001 }}>
-      <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 24, width: 380 }}>
-        <h4 style={{ margin: '0 0 16px', color: 'var(--color-text)' }}>{title}</h4>
-        <textarea rows={3} placeholder="Notes (optional)" value={notes} onChange={e => setNotes(e.target.value)}
-          style={{ width: '100%', background: 'var(--color-bg)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '8px 10px', color: 'var(--color-text)', fontSize: 13, resize: 'vertical', boxSizing: 'border-box', marginBottom: 16 }} />
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} style={{ padding: '7px 16px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-dim)', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
-          <button onClick={confirm} disabled={loading} style={{ padding: '7px 16px', borderRadius: 6, border: 'none', background: actionColor, color: '#fff', cursor: loading ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 700, opacity: loading ? 0.6 : 1 }}>
+      <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 32, width: 480 }}>
+        <h4 style={{ margin: '0 0 20px', color: 'var(--color-text)', fontSize: 18 }}>{title}</h4>
+        <textarea rows={4} placeholder="Notes (optional)" value={notes} onChange={e => setNotes(e.target.value)}
+          style={{ width: '100%', background: 'var(--color-bg)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '10px 14px', color: 'var(--color-text)', fontSize: 14, resize: 'vertical', boxSizing: 'border-box', marginBottom: 20 }} />
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={{ padding: '9px 20px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-dim)', cursor: 'pointer', fontSize: 14 }}>Cancel</button>
+          <button onClick={confirm} disabled={loading} style={{ padding: '9px 24px', borderRadius: 6, border: 'none', background: actionColor, color: '#fff', cursor: loading ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 700, opacity: loading ? 0.6 : 1 }}>
             {loading ? '...' : actionLabel}
           </button>
         </div>
