@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Sector, Cell
@@ -82,7 +83,7 @@ function RemediateModal({ violation, onClose, onSubmitted }) {
   const sev = violation.severity
   const sevColor = sev === 'critical' ? '#ef4444' : sev === 'high' ? '#f59e0b' : sev === 'medium' ? '#06b6d4' : '#8b5cf6'
 
-  return (
+  return createPortal(
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.75)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000 }}>
       <div style={{ background:'#13111f', border:`1px solid ${sevColor}55`, borderRadius:10, padding:24, width:480, maxWidth:'95vw', fontFamily:'var(--font-mono)' }}>
         <div style={{ fontSize:13, fontWeight:800, color:'#e2e8f0', marginBottom:4 }}>REMEDIATE VIOLATION</div>
@@ -144,7 +145,8 @@ function RemediateModal({ violation, onClose, onSubmitted }) {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
