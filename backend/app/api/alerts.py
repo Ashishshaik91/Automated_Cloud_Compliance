@@ -22,17 +22,47 @@ class TestAlertRequest(BaseModel):
     email: str
 
 
-@router.get("/", response_model=list[AlertResponse])
+@router.get("", response_model=list[AlertResponse])
 async def list_alerts(
     _: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
     acknowledged: bool | None = None,
     limit: int = 50,
 ) -> list[AlertResponse]:
-    """List compliance alerts."""
-    # Alert model would be added in next iteration
-    # Returning mock structure showing the interface
-    return []
+    """List compliance alerts using Violations as the source."""
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+    from app.models.violations import Violation
+
+    query = select(Violation).options(selectinload(Violation.rule)).order_by(Violation.detected_at.desc()).limit(limit)
+
+    if acknowledged is not None:
+        if acknowledged:
+            query = query.filter(Violation.status != 'open')
+        else:
+            query = query.filter(Violation.status == 'open')
+
+    result = await db.execute(query)
+    violations = result.scalars().all()
+
+    alerts = []
+    for v in violations:
+        frameworks = []
+        if v.rule and v.rule.framework_tags:
+            frameworks = [k for k, val in v.rule.framework_tags.items() if val]
+        framework = frameworks[0] if frameworks else "general"
+
+        alerts.append(AlertResponse(
+            id=v.id,
+            severity=v.severity,
+            message=v.rule.name if v.rule else "Compliance Violation",
+            resource_id=v.resource_id,
+            framework=framework,
+            acknowledged=v.status != "open",
+            status="acknowledged" if v.status != "open" else "open",
+            created_at=v.detected_at
+        ))
+    return alerts
 
 
 @router.post("/{alert_id}/acknowledge")
@@ -42,6 +72,15 @@ async def acknowledge_alert(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     """Acknowledge a compliance alert."""
+    from sqlalchemy import select
+    from app.models.violations import Violation
+    
+    result = await db.execute(select(Violation).filter(Violation.id == alert_id))
+    violation = result.scalars().first()
+    if violation:
+        violation.status = "ignored"  # Treat 'ignored' as acknowledged
+        await db.commit()
+        
     logger.info("Alert acknowledged", alert_id=alert_id, user_id=current_user.id)
     return {"status": "acknowledged", "alert_id": alert_id}
 

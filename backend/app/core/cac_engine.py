@@ -28,9 +28,20 @@ class CaCEngine:
 
     def __init__(self, policy_loader: PolicyLoader) -> None:
         self.policy_loader = policy_loader
+        # OPA runs with TLS using a self-signed cert (generated alongside nginx certs).
+        # The backend mounts the opa_ca_cert named volume at /app/certs — this volume
+        # contains ONLY cert.pem (the CA cert for verifying OPA's TLS connection).
+        # The OPA private key is NEVER present in this volume.
+        # OPA_TLS_CA_CERT env var overrides the path for non-Docker environments.
+        # Falls back to system CA store if the file doesn't exist — never uses verify=False.
+        import os
+        from pathlib import Path
+        opa_cert_path = os.environ.get("OPA_TLS_CA_CERT", "/app/certs/cert.pem")
+        tls_verify: str | bool = opa_cert_path if Path(opa_cert_path).exists() else True
         self._opa_client = httpx.AsyncClient(
             base_url=settings.opa_url,
             timeout=30.0,
+            verify=tls_verify,
         )
 
     async def evaluate(

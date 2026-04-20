@@ -21,7 +21,7 @@ router = APIRouter()
 logger = structlog.get_logger(__name__)
 
 
-@router.post("/", response_model=OrgResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=OrgResponse, status_code=status.HTTP_201_CREATED)
 async def create_org(
     body: OrgCreate,
     current_user: AdminUser,
@@ -48,7 +48,7 @@ async def create_org(
     return OrgResponse.model_validate(org)
 
 
-@router.get("/", response_model=list[OrgResponse])
+@router.get("", response_model=list[OrgResponse])
 async def list_orgs(
     current_user: AdminUser,
     db: Annotated[AsyncSession, Depends(get_db)],

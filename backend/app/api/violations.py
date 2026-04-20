@@ -220,10 +220,13 @@ async def rollback_remediation(
     """
     Execute the rollback_command from the runbook for a given resource.
     Respects the per-org remediation_dry_run flag.
-    Requires the user to have at minimum 'auditor' role (write-gated).
+    Requires 'admin' role — dev and viewer accounts may not trigger remediations.
     """
-    scope = await get_org_scope(current_user, db)
-    require_write_access(scope)
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators may execute remediations.",
+        )
 
     # Fetch org-level dry_run flag
     org = None

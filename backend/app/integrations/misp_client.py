@@ -65,7 +65,11 @@ async def search_misp_events(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=10.0, verify=False) as client:  # noqa: S501
+        # Determine TLS verification:
+        #   - misp_ca_cert set → use it as the CA bundle (self-signed / private CA)
+        #   - misp_ca_cert empty → use system CA store (publicly-signed cert)
+        tls_verify: str | bool = settings.misp_ca_cert if settings.misp_ca_cert else True
+        async with httpx.AsyncClient(timeout=10.0, verify=tls_verify) as client:
             response = await client.post(
                 f"{misp_url}/events/restSearch",
                 json=payload,

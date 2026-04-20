@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
+import api from './api/client'
 import { 
   Menu,
   Shield, 
@@ -29,16 +30,6 @@ import Workflows from './pages/Workflows'
 
 const ROLE_RANK = { viewer: 0, dev: 1, auditor: 2, admin: 3 }
 
-/** Decode JWT payload (no signature verification — server always validates). */
-function decodeJwtPayload(token) {
-  try {
-    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
-    return JSON.parse(atob(base64))
-  } catch {
-    return {}
-  }
-}
-
 const ROLE_BADGES = {
   admin:   { label: 'root',    color: 'var(--color-danger)' },
   auditor: { label: 'auditor', color: 'var(--color-warning)' },
@@ -46,30 +37,50 @@ const ROLE_BADGES = {
   viewer:  { label: 'guest',   color: 'var(--color-text-dim)' },
 }
 
-function getRoleFromToken(token) {
-  if (!token) return null
-  const payload = decodeJwtPayload(token)
-  return payload.role || 'viewer'
-}
-
 // ─── Auth hook ─────────────────────────────────────────────────────────────────
 
 const useAuth = () => {
-  const [token, setToken] = useState(() => localStorage.getItem('access_token'))
-  const [role, setRole] = useState(() => getRoleFromToken(localStorage.getItem('access_token')))
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [role, setRole] = useState('viewer')
+  const [loading, setLoading] = useState(true)
 
-  const login = (t) => {
-    localStorage.setItem('access_token', t)
-    setToken(t)
-    setRole(getRoleFromToken(t))
+  const checkAuth = async () => {
+    try {
+      const res = await api.get('/auth/me')
+      if (res.status === 200) {
+        setIsAuthenticated(true)
+        setRole(res.data.role || 'viewer')
+      } else {
+        setIsAuthenticated(false)
+        setRole(null)
+      }
+    } catch {
+      setIsAuthenticated(false)
+      setRole(null)
+    } finally {
+      setLoading(false)
+    }
   }
-  const logout = () => {
-    localStorage.removeItem('access_token')
-    setToken(null)
+
+  useEffect(() => {
+    checkAuth()
+  }, [])
+
+  const login = async () => {
+    await checkAuth()
+  }
+
+  const logout = async () => {
+    try {
+      await api.post('/auth/logout')
+    } catch (e) {
+      console.error(e)
+    }
+    setIsAuthenticated(false)
     setRole(null)
   }
 
-  return { token, role, login, logout, isAuthenticated: !!token }
+  return { role, login, logout, isAuthenticated, loading }
 }
 
 // ─── Role-gated route ──────────────────────────────────────────────────────────
@@ -182,13 +193,17 @@ const StatusBar = ({ logout, role, theme, setTheme }) => {
 // ─── App ───────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const { token, role, login, logout, isAuthenticated } = useAuth()
+  const { role, login, logout, isAuthenticated, loading } = useAuth()
   const [theme, setTheme] = useState(localStorage.getItem('app-theme') || 'cyber-rice')
 
   useEffect(() => {
     localStorage.setItem('app-theme', theme)
     document.documentElement.setAttribute('data-theme', theme)
   }, [theme])
+
+  if (loading) {
+    return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-primary)', fontFamily: 'var(--font-mono)' }}>INITIALIZING_SECURE_LINK...</div>
+  }
 
   if (!isAuthenticated) {
     return (
@@ -217,7 +232,7 @@ export default function App() {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/scans"     element={<RoleRoute element={<Scans />}       minRole="dev"     userRole={role} />} />
               <Route path="/reports"   element={<RoleRoute element={<Reports />}     minRole="auditor" userRole={role} />} />
-              <Route path="/policies"  element={<RoleRoute element={<Policies />}    minRole="dev"     userRole={role} />} />
+              <Route path="/policies"  element={<RoleRoute element={<Policies role={role} />}    minRole="dev"     userRole={role} />} />
               <Route path="/alerts"    element={<RoleRoute element={<Alerts />}      minRole="dev"     userRole={role} />} />
               <Route path="/accounts"  element={<RoleRoute element={<Accounts />}   minRole="dev"     userRole={role} />} />
               <Route path="/workflows" element={<RoleRoute element={<Workflows />}  minRole="dev"     userRole={role} />} />

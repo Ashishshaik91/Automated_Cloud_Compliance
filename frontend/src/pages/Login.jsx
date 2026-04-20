@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import axios from 'axios'
+import api from '../api/client'
 import TerminalWindow from '../components/TerminalWindow'
 
 export default function Login({ setToken }) {
@@ -15,14 +15,13 @@ export default function Login({ setToken }) {
       const formData = new URLSearchParams()
       formData.append('username', identity)
       formData.append('password', cypherKey)
-      const res = await axios.post('/api/v1/auth/login', formData, {
+      const res = await api.post('/auth/login', formData, {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       })
       setStatus('LINK_ESTABLISHED')
-      // setToken (= App's login()) stores in localStorage AND updates
-      // isAuthenticated state → App re-renders with the authenticated router.
-      // No navigate() needed — and none possible (stale ref across router boundary).
-      setTimeout(() => setToken(res.data.access_token), 600)
+      // setToken (= App's login()) triggers a refetch of /api/v1/auth/me
+      // and updates isAuthenticated state → App re-renders.
+      setTimeout(() => setToken(), 600)
     } catch (err) {
       console.error(err)
       setStatus('LINK_FAILURE')

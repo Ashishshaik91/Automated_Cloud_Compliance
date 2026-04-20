@@ -6,6 +6,7 @@ Never hardcodes secrets.
 
 from functools import lru_cache
 from typing import List
+from pathlib import Path
 
 from pydantic import AnyHttpUrl, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -32,10 +33,21 @@ class Settings(BaseSettings):
         return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
 
     # ---- JWT ----
-    jwt_secret_key: SecretStr
-    jwt_algorithm: str = "HS256"
+    jwt_secret_key: SecretStr = SecretStr("")
+    jwt_dual_verify: bool = False   # True only during HS256→RS256 migration window
+    jwt_algorithm: str = "RS256"
     jwt_access_token_expire_minutes: int = 30
     jwt_refresh_token_expire_days: int = 7
+    
+    @property
+    def jwt_private_key(self) -> str:
+        key_path = Path("/app/keys/jwt_private.pem") if self.app_env != "development" else Path(__file__).parent.parent / "keys" / "jwt_private.pem"
+        return key_path.read_text() if key_path.exists() else ""
+
+    @property
+    def jwt_public_key(self) -> str:
+        key_path = Path("/app/keys/jwt_public.pem") if self.app_env != "development" else Path(__file__).parent.parent / "keys" / "jwt_public.pem"
+        return key_path.read_text() if key_path.exists() else ""
 
     # ---- Database ----
     database_url: str
@@ -58,7 +70,7 @@ class Settings(BaseSettings):
     minio_secure: bool = False
 
     # ---- OPA ----
-    opa_url: str = "http://opa:8181"
+    opa_url: str = "https://opa:8181"
 
     # ---- Cloud Connectors (all optional) ----
     aws_access_key_id: str = ""
@@ -106,6 +118,43 @@ class Settings(BaseSettings):
     # MISP — leave empty to disable; set to your MISP instance base URL to enable
     misp_url: str = ""
     misp_api_key: SecretStr = SecretStr("")
+    # Path to a PEM CA certificate file used to verify the MISP server's TLS certificate.
+    # Required when your MISP instance uses a self-signed or private-CA certificate.
+    # Leave empty to use the system CA store (correct for publicly CA-signed MISP certs).
+    # NEVER set verify=False — use this field instead.
+    misp_ca_cert: str = ""
+
+    # ---- Prometheus Metrics Scrape IP Allowlist ----
+    # Comma-separated list of IPs and/or CIDR ranges allowed to scrape /metrics.
+    # 127.0.0.1      — loopback (local scraper / dev)
+    # 172.16.0.0/12  — Docker internal subnet (covers 172.16–172.31.x.x Compose networks)
+    # ::1            — IPv6 loopback
+    # Add your external Prometheus server IP/range here if scraping from outside.
+    prometheus_allowed_ips: str = "127.0.0.1,::1,172.16.0.0/12"
+
+    @property
+    def parsed_prometheus_allowed_networks(self) -> list:
+        """
+        Parse prometheus_allowed_ips into a list of IPv4Network / IPv6Network objects.
+        Single IPs are treated as host networks (/32 or /128) so the same
+        ``ip_address in network`` check works uniformly for both IPs and CIDRs.
+        Raises ValueError at startup if any entry is malformed.
+        """
+        import ipaddress
+        networks = []
+        for entry in self.prometheus_allowed_ips.split(","):
+            entry = entry.strip()
+            if not entry:
+                continue
+            try:
+                # strict=False allows e.g. 172.16.0.5/12 (host bits set)
+                networks.append(ipaddress.ip_network(entry, strict=False))
+            except ValueError:
+                raise ValueError(
+                    f"Invalid PROMETHEUS_ALLOWED_IPS entry '{entry}'. "
+                    "Must be an IP address (e.g. 192.168.1.5) or CIDR range (e.g. 172.16.0.0/12)."
+                )
+        return networks
 
     @field_validator("app_env")
     @classmethod

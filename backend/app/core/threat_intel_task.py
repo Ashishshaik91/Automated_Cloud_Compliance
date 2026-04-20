@@ -251,7 +251,9 @@ async def check_feed_health(redis_client: Any = None) -> dict[str, Any]:
     if settings.misp_url:
         try:
             misp_key = settings.misp_api_key.get_secret_value() if settings.misp_api_key else ""
-            async with httpx.AsyncClient(timeout=8.0, verify=False) as client:  # noqa: S501
+            # Use MISP_CA_CERT for self-signed/private-CA certs; system CA store otherwise
+            tls_verify: str | bool = settings.misp_ca_cert if settings.misp_ca_cert else True
+            async with httpx.AsyncClient(timeout=8.0, verify=tls_verify) as client:
                 r = await client.get(
                     f"{settings.misp_url.rstrip('/')}/servers/getVersion",
                     headers={"Authorization": misp_key, "Accept": "application/json"},

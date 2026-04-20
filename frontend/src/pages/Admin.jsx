@@ -1,10 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import axios from 'axios'
+import api from '../api/client'
 import TerminalWindow from '../components/TerminalWindow'
-
-const API = (token) => axios.create({
-  headers: { Authorization: `Bearer ${token}` }
-})
 
 const ROLE_COLORS = {
   admin:   'var(--color-danger)',
@@ -44,7 +40,6 @@ function ExpiryBadge({ expiresAt }) {
 }
 
 export default function Admin() {
-  const token = localStorage.getItem('access_token')
   const [tab, setTab] = useState('users')
   const [users, setUsers] = useState([])
   const [auditLogs, setAuditLogs] = useState([])
@@ -56,28 +51,26 @@ export default function Admin() {
   const [form, setForm] = useState({ email: '', full_name: '', password: '', role: 'dev' })
   const [assignForm, setAssignForm] = useState({ user_id: '', cloud_account_id: '', role: 'dev', expires_at: '' })
 
-  const api = API(token)
-
   const fetchUsers = useCallback(async () => {
     try {
-      const res = await api.get('/api/v1/users/')
+      const res = await api.get('/users/')
       setUsers(res.data)
     } catch {}
-  }, [token])
+  }, [])
 
   const fetchAuditLogs = useCallback(async () => {
     try {
-      const res = await api.get('/api/v1/audit-logs/?limit=50')
+      const res = await api.get('/audit-logs/?limit=50')
       setAuditLogs(res.data)
     } catch {}
-  }, [token])
+  }, [])
 
   const fetchUserRoles = useCallback(async (userId) => {
     try {
-      const res = await api.get(`/api/v1/users/${userId}/roles`)
+      const res = await api.get(`/users/${userId}/roles`)
       setUserRoles(prev => ({ ...prev, [userId]: res.data }))
     } catch {}
-  }, [token])
+  }, [])
 
   useEffect(() => {
     fetchUsers()
@@ -88,7 +81,7 @@ export default function Admin() {
     e.preventDefault()
     setLoading(true); setError(''); setSuccess('')
     try {
-      await api.post('/api/v1/users/', form)
+      await api.post('/users/', form)
       setSuccess('SYSTEM_MESSAGE: USER_CREATED_SUCCESS')
       setForm({ email: '', full_name: '', password: '', role: 'dev' })
       fetchUsers()
@@ -100,7 +93,7 @@ export default function Admin() {
   const deactivateUser = async (userId) => {
     if (!window.confirm('[ WARNING ] SHUTTING DOWN USER ACCESS. PROCEED?')) return
     try {
-      await api.patch(`/api/v1/users/${userId}/deactivate`)
+      await api.patch(`/users/${userId}/deactivate`)
       fetchUsers()
     } catch (err) { setError(err.response?.data?.detail || 'ERR: DEACTIVATION_FAILED') }
   }
@@ -115,7 +108,7 @@ export default function Admin() {
       expires_at: assignForm.expires_at || null,
     }
     try {
-      await api.post(`/api/v1/users/${assignForm.user_id}/roles`, body)
+      await api.post(`/users/${assignForm.user_id}/roles`, body)
       setSuccess('SYSTEM_MESSAGE: ROLE_ASSIGNED')
       fetchUserRoles(assignForm.user_id)
     } catch (err) { setError(err.response?.data?.detail || 'ERR: ASSIGNMENT_FAILED') }
@@ -124,7 +117,7 @@ export default function Admin() {
   const revokeRole = async (userId, accountId) => {
     if (!window.confirm('[ WARNING ] REVOKING PRIVILEGE. PROCEED?')) return
     try {
-      await api.delete(`/api/v1/users/${userId}/roles/${accountId}`)
+      await api.delete(`/users/${userId}/roles/${accountId}`)
       fetchUserRoles(userId)
     } catch (err) { setError(err.response?.data?.detail || 'ERR: REVOCATION_FAILED') }
   }

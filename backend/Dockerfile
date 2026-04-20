@@ -52,6 +52,10 @@ COPY runbooks/ ./runbooks/
 COPY alembic.ini .
 COPY alembic/ ./alembic/
 
+# Copy JWT RSA keys (private key for signing, public key for verification)
+RUN mkdir -p ./keys
+COPY keys/ ./keys/
+
 # Set correct ownership
 RUN chown -R appuser:appgroup /app
 

@@ -333,11 +333,16 @@ async def run_dspm_engine(
             continue
 
         # ── Persist findings ──────────────────────────────────────────────────
+        seen_urns = set()
         for store in live_stores:
             urn = _make_dspm_urn(
                 store["cloud_provider"], store["account_id"],
                 store["data_store_type"], store["data_store_id"]
             )
+            if urn in seen_urns:
+                continue
+            seen_urns.add(urn)
+            
             base_score = _compute_base_score(
                 store["sensitivity"], store["public_access"], store["encryption_status"]
             )

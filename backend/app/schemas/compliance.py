@@ -113,6 +113,7 @@ class AlertResponse(BaseModel):
     resource_id: Optional[str]
     framework: str
     acknowledged: bool
+    status: Optional[str] = "open"
     created_at: datetime
 
     model_config = {"from_attributes": True}

@@ -2,10 +2,10 @@
 WebSocket Connection Manager + Redis pub/sub listener.
 
 Architecture:
-  - Each org has its own Redis channel: "compliance:live:{org_id}"
+  - Each role in each org has its own Redis channel: "compliance:live:org:{org_id}:role:{role}"
   - Any backend worker publishes to that channel via publisher.py
   - The listener task (started in lifespan) reads all matching channels
-    and fans out to all connected WS clients scoped to that org
+    and fans out to all connected WS clients scoped to that room
 """
 from __future__ import annotations
 
@@ -18,34 +18,34 @@ from fastapi import WebSocket
 
 logger = structlog.get_logger(__name__)
 
-# org_id → set of connected WebSocket objects
-_connections: dict[int, set[WebSocket]] = {}
+# room_name → set of connected WebSocket objects
+_connections: dict[str, set[WebSocket]] = {}
 _lock = asyncio.Lock()
 
 
-async def connect(websocket: WebSocket, org_id: int) -> None:
-    """Register a new WebSocket connection for an org."""
+async def connect(websocket: WebSocket, room_name: str) -> None:
+    """Register a new WebSocket connection for a room."""
     await websocket.accept()
     async with _lock:
-        _connections.setdefault(org_id, set()).add(websocket)
-    logger.info("WS client connected", org_id=org_id, total=len(_connections.get(org_id, set())))
+        _connections.setdefault(room_name, set()).add(websocket)
+    logger.info("WS client connected", room=room_name, total=len(_connections.get(room_name, set())))
 
 
-async def disconnect(websocket: WebSocket, org_id: int) -> None:
+async def disconnect(websocket: WebSocket, room_name: str) -> None:
     """Remove a WebSocket connection."""
     async with _lock:
-        org_conns = _connections.get(org_id, set())
-        org_conns.discard(websocket)
-        if not org_conns:
-            _connections.pop(org_id, None)
-    logger.info("WS client disconnected", org_id=org_id)
+        room_conns = _connections.get(room_name, set())
+        room_conns.discard(websocket)
+        if not room_conns:
+            _connections.pop(room_name, None)
+    logger.info("WS client disconnected", room=room_name)
 
 
-async def broadcast_to_org(org_id: int, event: dict[str, Any]) -> None:
-    """Fan-out a JSON event to all WS clients in the given org."""
+async def broadcast_to_room(room_name: str, event: dict[str, Any]) -> None:
+    """Fan-out a JSON event to all WS clients in the given room."""
     payload = json.dumps(event)
     dead: list[WebSocket] = []
-    for ws in list(_connections.get(org_id, set())):
+    for ws in list(_connections.get(room_name, set())):
         try:
             await ws.send_text(payload)
         except Exception:
@@ -53,7 +53,7 @@ async def broadcast_to_org(org_id: int, event: dict[str, Any]) -> None:
     # Clean up dead connections
     async with _lock:
         for ws in dead:
-            _connections.get(org_id, set()).discard(ws)
+            _connections.get(room_name, set()).discard(ws)
 
 
 async def start_redis_listener(redis_url: str) -> None:
@@ -75,11 +75,11 @@ async def start_redis_listener(redis_url: str) -> None:
                 if message["type"] != "pmessage":
                     continue
                 try:
-                    # Channel format: "compliance:live:{org_id}"
+                    # Channel format: "compliance:live:{room_name}"
                     channel: str = message["channel"]
-                    org_id = int(channel.split(":")[-1])
+                    room_name = channel.replace("compliance:live:", "")
                     data = json.loads(message["data"])
-                    await broadcast_to_org(org_id, data)
+                    await broadcast_to_room(room_name, data)
                 except Exception as e:
                     logger.warning("WS listener parse error", error=str(e))
 

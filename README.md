@@ -167,6 +167,14 @@ Org-scoped live event feed via Redis pub/sub:
 - **Keepalive**: client sends `ping` text frame; server echoes `pong`
 - **WS endpoint**: `ws://host/api/v1/ws/live?token=`
 
+### Security Hardening & UI/UX Patches (Late April 2026)
+
+- **API & Authentication Hardening:** Resolved `307 Temporary Redirect` errors by normalizing API routes (removing trailing slashes) to ensure JSON payloads are preserved. Finalized `HttpOnly` secure cookie authentication to mitigate XSS risks.
+- **Infrastructure Stability:** Fixed NTFS bind mount permission errors for non-root containers on Windows hosts. Corrected the `celery_worker` SSL verification by securely mounting OPA CA certificates (`ro`), and removed unnecessary proxy TLS key mounts from the backend for improved isolation.
+- **Role-Based Access Control (RBAC):** UI remediation buttons (`FIX` / `APPROVE`) are now dynamically protected. `Admin` and `Auditor` roles retain access, while `Dev` and `Viewer` accounts are restricted to a `VIEW ONLY` state.
+- **Dashboard & Alerts UI/UX:** Resolved critical CSS Grid infinite-growth overflow issues where log tables expanded beyond their boundaries. Implemented absolute-positioning CSS tricks to tightly couple container heights to their forms (e.g., `notif_routing.conf`), ensuring tables scroll internally within perfectly bounded visual frames.
+- **Modal Portals:** Migrated all modals (like Remediation) to React Portals, breaking them out of deeply nested `overflow: hidden` boundaries for consistent viewport centering.
+
 ---
 
 ## Architecture

@@ -24,7 +24,7 @@ router = APIRouter()
 logger = structlog.get_logger(__name__)
 
 
-@router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def create_user(
     body: AdminUserCreate,
     current_user: AdminUser,
@@ -56,7 +56,7 @@ async def create_user(
     return UserResponse.model_validate(user)
 
 
-@router.get("/", response_model=list[UserResponse])
+@router.get("", response_model=list[UserResponse])
 async def list_users(
     current_user: AdminUser,
     db: Annotated[AsyncSession, Depends(get_db)],

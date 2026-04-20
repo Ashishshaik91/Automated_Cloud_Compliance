@@ -59,7 +59,7 @@ export default function Alerts() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '350px 1fr', gap: 24 }}>
-        <TerminalWindow title="notif_routing.conf">
+        <TerminalWindow title="notif_routing.conf" contentStyle={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div style={{ fontFamily: 'var(--font-mono)' }}>
             <div style={{ marginBottom: 24 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -154,13 +154,15 @@ export default function Alerts() {
           </div>
         </TerminalWindow>
 
-        <TerminalWindow title="alert_feed.log">
+        <div style={{ position: 'relative' }}>
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', flexDirection: 'column' }}>
+            <TerminalWindow title="alert_feed.log" style={{ flex: 1, height: '100%' }} contentStyle={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           {alerts.length === 0 ? (
             <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-dim)', fontFamily: 'var(--font-mono)' }}>
               [ OK ] NO_UNRESOLVED_VIOLATIONS_DETECTED
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1, overflowY: 'auto', minHeight: 0, paddingRight: 4 }}>
               {alerts.map(alert => (
                 <div key={alert.id} style={{ 
                   padding: '12px 16px', 
@@ -192,7 +194,9 @@ export default function Alerts() {
               ))}
             </div>
           )}
-        </TerminalWindow>
+            </TerminalWindow>
+          </div>
+        </div>
       </div>
     </div>
   )

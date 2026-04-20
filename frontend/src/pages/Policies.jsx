@@ -3,18 +3,6 @@ import { CreditCard, HeartPulse, Globe, Shield, Lock, Search, AlertTriangle, Pen
 import TerminalWindow from '../components/TerminalWindow'
 import api from '../api/client'
 
-function getUserRole() {
-  const token = localStorage.getItem('access_token');
-  if (!token) return 'viewer';
-  try {
-    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    const payload = JSON.parse(atob(base64));
-    return payload.role || 'viewer';
-  } catch {
-    return 'viewer';
-  }
-}
-
 const INITIAL_FRAMEWORKS = [
   {
     id: 'pci_dss', name: 'PCI-DSS v4.0', icon: <CreditCard size={24} />,
@@ -110,7 +98,7 @@ const INITIAL_FRAMEWORKS = [
   }
 ]
 
-export default function Policies() {
+export default function Policies({ role = 'viewer' }) {
   const [frameworks, setFrameworks] = useState(INITIAL_FRAMEWORKS)
   const [selected, setSelected] = useState(frameworks[0])
   const [showBuilder, setShowBuilder] = useState(false)
@@ -118,7 +106,6 @@ export default function Policies() {
   const [building, setBuilding] = useState(false)
   const [policySearch,  setPolicySearch]  = useState('')
   const [policySevFilter, setPolicySevFilter] = useState(null)
-  const role = getUserRole()
   const canCreate = ['admin', 'auditor'].includes(role)
 
   // filtered view of the selected framework's policies

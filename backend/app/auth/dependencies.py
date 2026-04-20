@@ -7,10 +7,12 @@ from datetime import datetime, timezone
 from typing import Annotated, Optional
 
 import structlog
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
+import redis.asyncio as aioredis
+from app.core.redis import get_redis
 
 from app.auth.jwt import decode_token
 from app.models.database import get_db
@@ -18,8 +20,6 @@ from app.models.org import UserAccountRole
 from app.models.user import User
 
 logger = structlog.get_logger(__name__)
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 # Role ordering for hierarchy checks
 _ROLE_RANK = {"viewer": 0, "dev": 1, "auditor": 2, "admin": 3}
@@ -40,15 +40,19 @@ def _require_role(minimum_role: str):
 
 
 async def get_current_user(
-    token: Annotated[str, Depends(oauth2_scheme)],
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
+    redis_client: aioredis.Redis = Depends(get_redis)
 ) -> User:
     """Validate JWT and return the current authenticated user."""
     credentials_exc = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
     )
+    token = request.cookies.get("access_token")
+    if not token:
+        raise credentials_exc
+
     try:
         payload = decode_token(token)
         if payload.get("type") != "access":
@@ -56,6 +60,12 @@ async def get_current_user(
         user_id: str = payload.get("sub", "")
         if not user_id:
             raise credentials_exc
+        
+        # Check revocation list
+        jti = payload.get("jti")
+        if jti and await redis_client.exists(f"revoked_token:{jti}"):
+            raise HTTPException(status_code=401, detail="Token has been revoked")
+
     except JWTError:
         logger.warning("Invalid JWT token")
         raise credentials_exc

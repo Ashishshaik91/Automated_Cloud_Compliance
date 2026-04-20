@@ -81,6 +81,11 @@ async def submit_request(
     current_user: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ApprovalRequestOut:
+    if current_user.role not in ("admin",):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators may submit approval requests.",
+        )
     req = await create_approval_request(
         db,
         requester=current_user,

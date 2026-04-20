@@ -7,12 +7,6 @@ import {
 import api from '../api/client'
 import TerminalWindow from '../components/TerminalWindow'
 
-// ── Remediation helpers ───────────────────────────────────────────────────────
-function authHeaders() {
-  const t = localStorage.getItem('access_token')
-  return { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
-}
-
 function RemediateModal({ violation, onClose, onSubmitted }) {
   const isHighRisk = ['critical', 'high'].includes(violation.severity)
   const [notes,   setNotes]   = useState('')
@@ -21,18 +15,11 @@ function RemediateModal({ violation, onClose, onSubmitted }) {
   const [error,   setError]   = useState('')
   const [dryRun,  setDryRun]  = useState(true)   // will be updated from org setting
 
-  // Fetch the org's live dry_run flag so UI text reflects reality
+  // Fetch the org's live dry_run flag
   useEffect(() => {
-    fetch('/api/v1/workflows/requests?limit=1', { headers: authHeaders() })
-      .catch(() => {})
-    // Hit the org profile endpoint if available, else check rollback response
-    // For now derive from a quick profile call
-    fetch('/api/v1/users/me', { headers: authHeaders() })
-      .then(r => r.json())
-      .then(u => {
-        if (u?.organization_id) {
-          // org dry_run is returned by the execute endpoint; approximate from a known source
-          // We set it to false in the DB — reflect that here
+    api.get('/users/me')
+      .then(r => {
+        if (r.data?.organization_id) {
           setDryRun(false)
         }
       })
@@ -42,15 +29,12 @@ function RemediateModal({ violation, onClose, onSubmitted }) {
   const runDirect = async () => {
     setLoading(true); setError('')
     try {
-      const res = await fetch(
-        `/api/v1/violations/remediations/${encodeURIComponent(violation.rule_id)}/rollback?resource_id=${encodeURIComponent(violation.resource_id || '')}`,
-        { method: 'POST', headers: authHeaders() }
+      const res = await api.post(
+        `/violations/remediations/${encodeURIComponent(violation.rule_id)}/rollback?resource_id=${encodeURIComponent(violation.resource_id || '')}`,
       )
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.detail || 'Remediation failed')
-      setResult(data)
+      setResult(res.data)
       onSubmitted()
-    } catch(e) { setError(e.message) }
+    } catch(e) { setError(e.response?.data?.detail || e.message) }
     finally { setLoading(false) }
   }
 
@@ -69,14 +53,10 @@ function RemediateModal({ violation, onClose, onSubmitted }) {
           dry_run:     false,
         },
       }
-      const res = await fetch('/api/v1/workflows/requests', {
-        method: 'POST', headers: authHeaders(), body: JSON.stringify(body),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.detail || 'Failed to submit')
-      setResult({ status: 'workflow_submitted', workflow_id: data.id })
+      const res = await api.post('/workflows/requests', body)
+      setResult({ status: 'workflow_submitted', workflow_id: res.data.id })
       onSubmitted()
-    } catch(e) { setError(e.message) }
+    } catch(e) { setError(e.response?.data?.detail || e.message) }
     finally { setLoading(false) }
   }
 
@@ -338,15 +318,18 @@ export default function Dashboard() {
   const [correlations,    setCorrelations]    = useState([])
   const [dspmFilter,      setDspmFilter]      = useState(null)
   const [remediateTarget, setRemediateTarget] = useState(null) // violation being remediated
+  const [userRole,        setUserRole]        = useState('')
 
   const fetchData = async () => {
     try {
       setLoading(true)
-      const [sumR, chkR, scnR] = await Promise.all([
+      const [sumR, chkR, scnR, meR] = await Promise.all([
         api.get('/compliance/summary'),
         api.get('/compliance/checks?limit=500'),  // broader limit to cover all accounts
         api.get('/scans?limit=200'),
+        api.get('/auth/me'),
       ])
+      setUserRole(meR.data?.role || '')
       setSummary(sumR.data)
       setChecks(chkR.data)
 
@@ -608,7 +591,7 @@ export default function Dashboard() {
             ))}
           </div>
 
-          <div style={{ overflowY: 'auto', maxHeight: 520 }}>
+          <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
             <table style={{ width: '100%', fontSize: 10, borderCollapse: 'collapse', ...mono }}>
               <thead style={{ position: 'sticky', top: 0, background: 'rgba(13,10,28,0.97)', zIndex: 1 }}>
                 <tr style={{ textAlign: 'left', borderBottom: `1px solid ${C.blue}44` }}>
@@ -642,25 +625,29 @@ export default function Dashboard() {
                      </td>
                      <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>
                        {isFail ? (
-                         <button
-                           onClick={() => setRemediateTarget({
-                             id:             c.id,
-                             rule_id:        c.policy_id,
-                             resource_id:    c.resource_id,
-                             severity:       c.severity,
-                             status:         'open',
-                             cloud_provider: 'aws',
-                           })}
-                           style={{
-                             padding: '2px 7px', fontSize: 8, fontFamily: 'var(--font-mono)',
-                             fontWeight: 800, cursor: 'pointer', border: `1px solid ${sevColor}`,
-                             background: `${sevColor}15`, color: sevColor, borderRadius: 3,
-                             letterSpacing: '0.05em',
-                           }}
-                           title={['critical','high'].includes(c.severity) ? 'Submit approval workflow' : 'Execute direct remediation'}
-                         >
-                           {['critical','high'].includes(c.severity) ? 'APPROVE' : 'FIX'}
-                         </button>
+                         ['admin', 'auditor'].includes(userRole) ? (
+                           <button
+                             onClick={() => setRemediateTarget({
+                               id:             c.id,
+                               rule_id:        c.policy_id,
+                               resource_id:    c.resource_id,
+                               severity:       c.severity,
+                               status:         'open',
+                               cloud_provider: 'aws',
+                             })}
+                             style={{
+                               padding: '2px 7px', fontSize: 8, fontFamily: 'var(--font-mono)',
+                               fontWeight: 800, cursor: 'pointer', border: `1px solid ${sevColor}`,
+                               background: `${sevColor}15`, color: sevColor, borderRadius: 3,
+                               letterSpacing: '0.05em',
+                             }}
+                             title={['critical','high'].includes(c.severity) ? 'Submit approval workflow' : 'Execute direct remediation'}
+                           >
+                             {['critical','high'].includes(c.severity) ? 'APPROVE' : 'FIX'}
+                           </button>
+                         ) : (
+                           <span style={{ fontSize: 8, color: C.dim, fontFamily: 'var(--font-mono)' }}>VIEW ONLY</span>
+                         )
                        ) : (
                          <span style={{ fontSize: 8, color: C.green, fontFamily: 'var(--font-mono)' }}>PASS</span>
                        )}
@@ -761,10 +748,10 @@ export default function Dashboard() {
       </div>
 
       {/* ── Violations + DSPM row ──────────────────────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12, height: 480 }}>
 
         {/* violations_engine.log */}
-        <TerminalWindow title="violations_engine.log" accent={C.red}>
+        <TerminalWindow title="violations_engine.log" accent={C.red} contentStyle={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div style={{ fontSize: 9, color: C.dim, ...mono, marginBottom: 10 }}>
             $ rule-engine --check all-resources --provider aws,azure,gcp
           </div>
@@ -798,7 +785,7 @@ export default function Dashboard() {
           )}
 
           {/* violations table */}
-          <div style={{ overflowY: 'auto', maxHeight: 260 }}>
+          <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
             <table style={{ width: '100%', fontSize: 10, borderCollapse: 'collapse', ...mono }}>
               <thead style={{ position: 'sticky', top: 0, background: 'rgba(13,10,28,0.97)', zIndex: 1 }}>
                 <tr style={{ borderBottom: `1px solid ${C.red}44` }}>
@@ -830,20 +817,24 @@ export default function Dashboard() {
                       </td>
                       <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>
                         {!isResolved ? (
-                          <button
-                            onClick={() => setRemediateTarget(v)}
-                            style={{
-                              padding: '2px 8px', fontSize: 8, fontFamily: 'var(--font-mono)',
-                              fontWeight: 800, cursor: 'pointer',
-                              border: `1px solid ${['critical','high'].includes(v.severity) ? sevColor : v.severity === 'medium' ? C.cyan : C.purple}`,
-                              background: `${['critical','high'].includes(v.severity) ? sevColor : v.severity === 'medium' ? C.cyan : C.purple}15`,
-                              color: ['critical','high'].includes(v.severity) ? sevColor : v.severity === 'medium' ? C.cyan : C.purple,
-                              borderRadius: 3, letterSpacing: '0.05em', transition: 'background 0.15s',
-                            }}
-                            title={['critical','high'].includes(v.severity) ? 'Submit approval workflow' : 'Execute direct remediation'}
-                          >
-                            {['critical','high'].includes(v.severity) ? 'APPROVE' : 'FIX'}
-                          </button>
+                          ['admin', 'auditor'].includes(userRole) ? (
+                            <button
+                              onClick={() => setRemediateTarget(v)}
+                              style={{
+                                padding: '2px 8px', fontSize: 8, fontFamily: 'var(--font-mono)',
+                                fontWeight: 800, cursor: 'pointer',
+                                border: `1px solid ${['critical','high'].includes(v.severity) ? sevColor : v.severity === 'medium' ? C.cyan : C.purple}`,
+                                background: `${['critical','high'].includes(v.severity) ? sevColor : v.severity === 'medium' ? C.cyan : C.purple}15`,
+                                color: ['critical','high'].includes(v.severity) ? sevColor : v.severity === 'medium' ? C.cyan : C.purple,
+                                borderRadius: 3, letterSpacing: '0.05em', transition: 'background 0.15s',
+                              }}
+                              title={['critical','high'].includes(v.severity) ? 'Submit approval workflow' : 'Execute direct remediation'}
+                            >
+                              {['critical','high'].includes(v.severity) ? 'APPROVE' : 'FIX'}
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: 8, color: C.dim, fontFamily: 'var(--font-mono)' }}>VIEW ONLY</span>
+                          )
                         ) : (
                           <span style={{ fontSize: 8, color: C.green, fontFamily: 'var(--font-mono)' }}>DONE</span>
                         )}
@@ -872,7 +863,7 @@ export default function Dashboard() {
         </TerminalWindow>
 
         {/* dspm_scanner.log */}
-        <TerminalWindow title="dspm_scanner.log" accent={C.blue}>
+        <TerminalWindow title="dspm_scanner.log" accent={C.blue} contentStyle={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div style={{ fontSize: 9, color: C.dim, ...mono, marginBottom: 10 }}>
             $ dspm --classify --risk-score --analyze-access
           </div>
@@ -912,7 +903,7 @@ export default function Dashboard() {
           </div>
 
           {/* DSPM findings table */}
-          <div style={{ overflowY: 'auto', maxHeight: 200 }}>
+          <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
             <table style={{ width: '100%', fontSize: 10, borderCollapse: 'collapse', ...mono }}>
               <thead style={{ position: 'sticky', top: 0, background: 'rgba(13,10,28,0.97)', zIndex: 1 }}>
                 <tr style={{ borderBottom: `1px solid ${C.blue}44` }}>

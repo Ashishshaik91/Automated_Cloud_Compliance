@@ -23,7 +23,7 @@ router = APIRouter()
 logger = structlog.get_logger(__name__)
 
 
-@router.get("/", response_model=list[AuditLogResponse])
+@router.get("", response_model=list[AuditLogResponse])
 async def list_audit_logs(
     current_user: AuditorUser,
     db: Annotated[AsyncSession, Depends(get_db)],

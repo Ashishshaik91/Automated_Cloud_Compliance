@@ -22,7 +22,7 @@ router = APIRouter()
 logger = structlog.get_logger(__name__)
 
 
-@router.post("/", response_model=CloudAccountResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=CloudAccountResponse, status_code=status.HTTP_201_CREATED)
 async def create_cloud_account(
     body: CloudAccountCreate,
     current_user: AdminUser,
@@ -61,7 +61,7 @@ async def create_cloud_account(
     return CloudAccountResponse.model_validate(account)
 
 
-@router.get("/", response_model=list[CloudAccountResponse])
+@router.get("", response_model=list[CloudAccountResponse])
 async def list_cloud_accounts(
     current_user: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],

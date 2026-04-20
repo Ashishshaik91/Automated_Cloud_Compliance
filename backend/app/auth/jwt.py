@@ -8,6 +8,7 @@ from typing import Any
 import structlog
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+import uuid
 
 from app.config import get_settings
 
@@ -41,12 +42,13 @@ def create_access_token(
         "iat": now,
         "exp": expire,
         "type": "access",
+        "jti": str(uuid.uuid4()),
     }
     if extra_claims:
         payload.update(extra_claims)
     return jwt.encode(
         payload,
-        settings.jwt_secret_key.get_secret_value(),
+        settings.jwt_private_key,
         algorithm=settings.jwt_algorithm,
     )
 
@@ -60,10 +62,11 @@ def create_refresh_token(subject: str) -> str:
         "iat": now,
         "exp": expire,
         "type": "refresh",
+        "jti": str(uuid.uuid4()),
     }
     return jwt.encode(
         payload,
-        settings.jwt_secret_key.get_secret_value(),
+        settings.jwt_private_key,
         algorithm=settings.jwt_algorithm,
     )
 
@@ -72,9 +75,32 @@ def decode_token(token: str) -> dict[str, Any]:
     """
     Decode and validate a JWT token.
     Raises JWTError on invalid/expired tokens.
+    Supports dual-verify for zero-downtime migration from HS256 to RS256.
+
+    When jwt_dual_verify=True and an HS256 token is accepted, the payload
+    is flagged with 'legacy_alg': 'HS256' so callers can deny elevated ops.
+    When jwt_dual_verify=False (production default), HS256 tokens are rejected.
     """
-    return jwt.decode(
-        token,
-        settings.jwt_secret_key.get_secret_value(),
-        algorithms=[settings.jwt_algorithm],
-    )
+    try:
+        # Always try RS256 first
+        return jwt.decode(
+            token,
+            settings.jwt_public_key,
+            algorithms=["RS256"],
+        )
+    except JWTError as e:
+        # Dual-verify: HS256 fallback for zero-downtime migration only
+        if settings.jwt_dual_verify and settings.jwt_secret_key.get_secret_value():
+            try:
+                payload = jwt.decode(
+                    token,
+                    settings.jwt_secret_key.get_secret_value(),
+                    algorithms=["HS256"],
+                )
+                # Flag as legacy — callers must not grant elevated privileges
+                payload["legacy_alg"] = "HS256"
+                logger.warning("Legacy HS256 token accepted via dual-verify", sub=payload.get("sub"))
+                return payload
+            except JWTError:
+                pass
+        raise e

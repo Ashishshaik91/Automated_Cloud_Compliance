@@ -72,7 +72,7 @@ async def trigger_scan(
     }
 
 
-@router.get("/", response_model=list[ScanResultResponse])
+@router.get("", response_model=list[ScanResultResponse])
 async def list_scans(
     current_user: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
