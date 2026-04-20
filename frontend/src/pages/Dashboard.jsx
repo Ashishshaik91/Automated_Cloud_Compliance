@@ -342,12 +342,13 @@ export default function Dashboard() {
       setLoading(true)
       const [sumR, chkR, scnR] = await Promise.all([
         api.get('/compliance/summary'),
-        api.get('/compliance/checks?limit=200'),
+        api.get('/compliance/checks?limit=500'),  // broader limit to cover all accounts
         api.get('/scans?limit=200'),
       ])
       setSummary(sumR.data)
       setChecks(chkR.data)
 
+      // Severity distribution from checks (all accounts combined)
       const dist = { critical: 0, high: 0, medium: 0, low: 0 }
       chkR.data.forEach(c => { if (c.status === 'fail' && dist[c.severity] !== undefined) dist[c.severity]++ })
       setSevDist([
@@ -357,30 +358,42 @@ export default function Dashboard() {
         { name: 'LOW',      val: dist.low,      color: C.purple },
       ])
 
+      // ── Htop bars: per-framework pass-rate from actual checks (all accounts) ──
+      // This reflects the true posture, not a single scan's stored score.
+      const fwChecks = {}
+      chkR.data.forEach(c => {
+        const fw = c.framework
+        if (!fwChecks[fw]) fwChecks[fw] = { pass: 0, total: 0 }
+        fwChecks[fw].total++
+        if (c.status === 'pass') fwChecks[fw].pass++
+      })
+      setScores(FRAMEWORKS.map(fw => {
+        const d = fwChecks[fw]
+        if (d && d.total > 0) {
+          return { name: FW_NAMES[fw], score: Math.round((d.pass / d.total) * 100), hasData: true }
+        }
+        return { name: FW_NAMES[fw], score: 0, hasData: false }
+      }))
+
+      // ── Trend: aggregate score per day across ALL accounts' scans ───────────
       const scans  = (scnR.data || []).filter(s => s.total_checks > 0)
       const sorted = [...scans].sort((a, b) => new Date(b.started_at) - new Date(a.started_at))
-      const fwMap  = {}
-      FRAMEWORKS.forEach(fw => {
-        const s = sorted.find(x => x.framework === fw || x.framework === 'all')
-        if (s) fwMap[fw] = s
-      })
-      setScores(FRAMEWORKS.map(fw => ({
-        name: FW_NAMES[fw], score: fwMap[fw] ? fwMap[fw].compliance_score : 0, hasData: !!fwMap[fw],
-      })))
-
+      // Group by date — average the compliance_score of all scans on that day
       const dm = {}
-      // Use 'sorted' (descending) so the first time we see a date, it's the latest score for that day
       sorted.forEach(s => {
         const d = new Date(s.started_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-        if (dm[d] === undefined) dm[d] = s.compliance_score
+        if (!dm[d]) dm[d] = { sum: 0, count: 0 }
+        dm[d].sum   += s.compliance_score
+        dm[d].count += 1
       })
       const td = Object.keys(dm)
-        .map(d => ({ date: d, score: Number((dm[d] || 0).toFixed(1)) }))
+        .map(d => ({ date: d, score: Number((dm[d].sum / dm[d].count).toFixed(1)) }))
         .sort((a, b) => new Date(a.date) - new Date(b.date)).slice(-12)
       setTrend(td.length ? td : [{ date: 'none', score: null }])
     } catch (err) { console.error(err) }
     finally { setLoading(false) }
   }
+
 
   useEffect(() => { fetchData() }, [])
 

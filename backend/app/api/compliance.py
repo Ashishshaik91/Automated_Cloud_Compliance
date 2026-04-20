@@ -27,75 +27,78 @@ async def get_compliance_summary(
     _: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ComplianceSummary:
-    """Return overall compliance posture summary."""
+    """Return overall compliance posture summary.
+
+    Score = aggregate pass-rate across ALL ComplianceCheck rows from the
+    most-recent completed scan for EACH connected account.  This gives a
+    true cross-account posture rather than whichever framework scanned last.
+    """
     total_accounts_result = await db.execute(
         select(func.count()).select_from(CloudAccount).where(CloudAccount.is_active == True)
     )
     total_accounts = total_accounts_result.scalar() or 0
 
-    FRAMEWORKS = ["pci_dss", "hipaa", "gdpr", "soc2", "nist", "cis", "owasp"]
+    # ── Step 1: latest completed scan per account ────────────────────────────
+    accounts_result = await db.execute(
+        select(CloudAccount).where(CloudAccount.is_active == True)
+    )
+    accounts = accounts_result.scalars().all()
 
-    # Get the latest completed scan per framework (mirrors what the dashboard bars show)
-    per_fw_scores: list[float] = []
     latest_scan_ids: list[int] = []
     latest_scan_ts = None
 
-    for fw in FRAMEWORKS:
-        fw_result = await db.execute(
+    for acct in accounts:
+        scan_result = await db.execute(
             select(ScanResult)
             .where(
-                ScanResult.framework == fw,
+                ScanResult.account_id == acct.id,
                 ScanResult.total_checks > 0,
             )
             .order_by(ScanResult.started_at.desc())
             .limit(1)
         )
-        fw_scan = fw_result.scalar_one_or_none()
+        latest = scan_result.scalar_one_or_none()
+        if latest:
+            latest_scan_ids.append(latest.id)
+            if latest_scan_ts is None or latest.started_at > latest_scan_ts:
+                latest_scan_ts = latest.started_at
 
-        # Fallback: accept an 'all' scan if no per-framework scan exists
-        if not fw_scan:
-            fw_result2 = await db.execute(
-                select(ScanResult)
-                .where(
-                    ScanResult.framework == "all",
-                    ScanResult.total_checks > 0,
-                )
-                .order_by(ScanResult.started_at.desc())
-                .limit(1)
-            )
-            fw_scan = fw_result2.scalar_one_or_none()
-
-        if fw_scan:
-            per_fw_scores.append(fw_scan.compliance_score)
-            latest_scan_ids.append(fw_scan.id)
-            if latest_scan_ts is None or fw_scan.started_at > latest_scan_ts:
-                latest_scan_ts = fw_scan.started_at
-
-    # Overall score = mean of per-framework scores (same as bars)
-    avg_score = round(sum(per_fw_scores) / len(per_fw_scores), 2) if per_fw_scores else 0.0
-
-    # Critical / high failures across all those latest per-framework scans
+    # ── Step 2: aggregate pass/fail across all checks in those scans ─────────
     if latest_scan_ids:
-        crit_result = await db.execute(
+        total_checks_q = await db.execute(
+            select(func.count()).select_from(ComplianceCheck).where(
+                ComplianceCheck.scan_id.in_(latest_scan_ids)
+            )
+        )
+        pass_q = await db.execute(
+            select(func.count()).select_from(ComplianceCheck).where(
+                ComplianceCheck.scan_id.in_(latest_scan_ids),
+                ComplianceCheck.status == "pass",
+            )
+        )
+        crit_q = await db.execute(
             select(func.count()).select_from(ComplianceCheck).where(
                 ComplianceCheck.scan_id.in_(latest_scan_ids),
                 ComplianceCheck.severity == "critical",
                 ComplianceCheck.status == "fail",
             )
         )
-        high_result = await db.execute(
+        high_q = await db.execute(
             select(func.count()).select_from(ComplianceCheck).where(
                 ComplianceCheck.scan_id.in_(latest_scan_ids),
                 ComplianceCheck.severity == "high",
                 ComplianceCheck.status == "fail",
             )
         )
+        total_checks      = total_checks_q.scalar() or 0
+        total_pass        = pass_q.scalar() or 0
+        critical_failures = crit_q.scalar() or 0
+        high_failures     = high_q.scalar() or 0
+        avg_score = round((total_pass / total_checks) * 100, 2) if total_checks else 0.0
     else:
-        crit_result = await db.execute(select(func.count()).select_from(ComplianceCheck).where(func.false()))
-        high_result = await db.execute(select(func.count()).select_from(ComplianceCheck).where(func.false()))
-
-    critical_failures = crit_result.scalar() or 0
-    high_failures     = high_result.scalar() or 0
+        avg_score         = 0.0
+        critical_failures = 0
+        high_failures     = 0
 
     return ComplianceSummary(
         total_accounts=total_accounts,
@@ -108,10 +111,6 @@ async def get_compliance_summary(
     )
 
 
-
-
-
-
 @router.get("/checks", response_model=list[ComplianceCheckResponse])
 async def get_compliance_checks(
     _: CurrentUser,
@@ -122,8 +121,39 @@ async def get_compliance_checks(
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ) -> list[ComplianceCheckResponse]:
-    """List compliance checks with optional filtering."""
-    stmt = select(ComplianceCheck)
+    """List compliance checks with optional filtering.
+
+    Returns checks from the most-recent completed scan for each account,
+    so the policy engine table always reflects the current posture of all
+    connected accounts — not just the account that last triggered a scan.
+    """
+    # Collect the latest scan ID per account
+    accounts_result = await db.execute(
+        select(CloudAccount).where(CloudAccount.is_active == True)
+    )
+    accounts = accounts_result.scalars().all()
+
+    latest_scan_ids: list[int] = []
+    for acct in accounts:
+        scan_result = await db.execute(
+            select(ScanResult)
+            .where(
+                ScanResult.account_id == acct.id,
+                ScanResult.total_checks > 0,
+            )
+            .order_by(ScanResult.started_at.desc())
+            .limit(1)
+        )
+        latest = scan_result.scalar_one_or_none()
+        if latest:
+            latest_scan_ids.append(latest.id)
+
+    if not latest_scan_ids:
+        return []
+
+    stmt = select(ComplianceCheck).where(
+        ComplianceCheck.scan_id.in_(latest_scan_ids)
+    )
     if framework:
         stmt = stmt.where(ComplianceCheck.framework == framework)
     if status:
