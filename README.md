@@ -255,15 +255,20 @@ CloudCompliancePlatform/
 │   │   ├── schemas/          # Pydantic v2 schemas
 │   │   └── ws/               # WebSocket connection manager, router, publisher
 │   ├── alembic/versions/     # Migrations: 0001 org hierarchy · 0002 scoping · 0003 MFA · 0004 scores · 0005 workflows
-│   └── secrets/              # Remediation scripts: run_mfa.sh · fix_cloudtrail_and_iam.py · enable_mfa.py
 │   ├── policies/             # YAML compliance definitions
+│   ├── secrets/              # Remediation scripts: run_mfa.sh · fix_cloudtrail_and_iam.py · enable_mfa.py
 │   └── tests/                # Pytest suite
+├── docs/                     # Security reports and architectural documentation
 ├── frontend/                 # React 18 + Vite TUI
+│   ├── src/                  # React components, pages, and API clients
+│   └── nginx.conf            # Internal frontend web server configuration
 ├── infra/                    # Terraform demo stack
+├── nginx/                    # Main TLS Reverse Proxy and SSL certificates
+│   └── nginx.conf            # Reverse proxy configuration (ports 80/443)
 ├── opa/                      # OPA Rego policies
-├── scripts/                  # Dev utilities (not part of runtime or CI)
+├── scripts/                  # Dev utilities (certificate generation, Rego conversion)
 │   └── generate_rego.py      # Converts YAML policies → OPA Rego stubs
-├── .github/workflows/        # GitHub Actions CI/CD
+├── .github/workflows/        # GitHub Actions CI/CD and Security scanning
 └── docker-compose.yml
 ```
 
