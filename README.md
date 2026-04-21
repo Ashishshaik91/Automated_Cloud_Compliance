@@ -290,12 +290,12 @@ CloudCompliancePlatform/
 | Framework | Version | Policy Engine |
 |---|---|---|
 | **PCI-DSS** | v4.0 | OPA Rego + YAML |
-| **HIPAA** | Security Rule | YAML |
-| **GDPR** | 2016/679 | YAML |
-| **SOC 2** | Type II | YAML |
-| **NIST** | CSF 2.0 | YAML |
-| **CIS** | Benchmarks v8 | YAML |
-| **OWASP** | Top 10 | YAML |
+| **HIPAA** | Security Rule | OPA Rego + YAML |
+| **GDPR** | 2016/679 | OPA Rego + YAML |
+| **SOC 2** | Type II | OPA Rego + YAML |
+| **NIST** | CSF 2.0 | OPA Rego + YAML |
+| **CIS** | Benchmarks v8 | OPA Rego + YAML |
+| **OWASP** | Top 10 | OPA Rego + YAML |
 
 ---
 
