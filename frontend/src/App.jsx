@@ -25,7 +25,7 @@ import Accounts from './pages/Accounts'
 import Login from './pages/Login'
 import Admin from './pages/Admin'
 import Workflows from './pages/Workflows'
-import Settings from './pages/Settings'
+import SettingsPage from './pages/Settings'
 
 // ─── Role helpers ──────────────────────────────────────────────────────────────
 
@@ -131,15 +131,15 @@ const StatusBar = ({ logout, role, theme, setTheme }) => {
   const badge = ROLE_BADGES[role] || ROLE_BADGES.viewer
 
   const navItems = [
-    { label: '01:Dash', to: '/dashboard',  minRole: 'viewer'  },
-    { label: '02:Scan', to: '/scans',      minRole: 'dev'     },
-    { label: '03:Repo', to: '/reports',    minRole: 'auditor' },
-    { label: '04:Pol',  to: '/policies',   minRole: 'dev'     },
-    { label: '05:Alrt', to: '/alerts',     minRole: 'dev'     },
-    { label: '06:Cloud',to: '/accounts',   minRole: 'dev'     },
-    { label: '07:Wrkflw', to: '/workflows', minRole: 'dev'   },
-    { label: '08:Adm',  to: '/admin',      minRole: 'admin'  },
-    { label: '09:Sec',  to: '/settings',   minRole: 'viewer' },
+    { label: 'Dash', to: '/dashboard',  minRole: 'viewer'  },
+    { label: 'Scan', to: '/scans',      minRole: 'dev'     },
+    { label: 'Repo', to: '/reports',    minRole: 'auditor' },
+    { label: 'Pol',  to: '/policies',   minRole: 'dev'     },
+    { label: 'Alrt', to: '/alerts',     minRole: 'dev'     },
+    { label: 'Cloud',to: '/accounts',   minRole: 'dev'     },
+    { label: 'Wrkflw', to: '/workflows', minRole: 'dev'   },
+    { label: 'Adm',  to: '/admin',      minRole: 'admin'  },
+    { label: 'Sec',  to: '/settings',   minRole: 'viewer' },
   ]
 
   const visibleItems = navItems.filter(item => ROLE_RANK[role] >= ROLE_RANK[item.minRole])
@@ -161,7 +161,7 @@ const StatusBar = ({ logout, role, theme, setTheme }) => {
           <Shield size={15} /> DIREWOLF
         </div>
         <div style={{ display: 'flex', gap: 16 }}>
-          {visibleItems.map(item => (
+          {visibleItems.map((item, index) => (
             <NavLink 
               key={item.to} 
               to={item.to} 
@@ -172,7 +172,7 @@ const StatusBar = ({ logout, role, theme, setTheme }) => {
                 transition: 'color 0.2s'
               })}
             >
-              {item.label}
+              {`${String(index + 1).padStart(2, '0')}:${item.label}`}
             </NavLink>
           ))}
         </div>
@@ -244,7 +244,7 @@ export default function App() {
               <Route path="/accounts"  element={<RoleRoute element={<Accounts />}   minRole="dev"     userRole={role} />} />
               <Route path="/workflows" element={<RoleRoute element={<Workflows />}  minRole="dev"     userRole={role} />} />
               <Route path="/admin"     element={<RoleRoute element={<Admin role={role} />} minRole="admin" userRole={role} />} />
-              <Route path="/settings"  element={<RoleRoute element={<Settings />} minRole="viewer" userRole={role} />} />
+              <Route path="/settings"  element={<RoleRoute element={<SettingsPage />} minRole="viewer" userRole={role} />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>
           </PageTransition>

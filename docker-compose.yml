@@ -276,13 +276,13 @@ services:
         # opa_certs: full keypair for OPA's TLS server
         cp /src/cert.pem /certs/cert.pem
         cp /src/key.pem  /certs/key.pem
-        chown 999:999 /certs/cert.pem /certs/key.pem
+        chown 1000:1000 /certs/cert.pem /certs/key.pem
         chmod 644 /certs/cert.pem
         chmod 600 /certs/key.pem        # private key: OPA non-root user only
         # opa_ca_cert: public cert only — backend uses this to verify OPA's TLS
         # The private key MUST NOT be present in this volume.
         cp /src/cert.pem /ca/cert.pem
-        chown 999:999 /ca/cert.pem
+        chown 1000:1000 /ca/cert.pem
         chmod 644 /ca/cert.pem
         echo "Done — OPA keypair in opa_certs, CA cert only in opa_ca_cert."
     volumes:

@@ -196,12 +196,13 @@ async def metrics_access_control(request: Request) -> None:
     if not _is_prometheus_allowed(client_ip):
         raise HTTPException(status_code=404, detail="Not found")
 
-Instrumentator().instrument(app).expose(
-    app,
-    endpoint="/metrics",
-    tags=["Metrics"],
-    dependencies=[Depends(require_admin), Depends(metrics_access_control)],
-)
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+
+@app.get("/metrics", tags=["Metrics"], dependencies=[Depends(require_admin), Depends(metrics_access_control)])
+async def metrics():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+Instrumentator().instrument(app)
 
 # ---- Routers ----
 API_PREFIX = "/api/v1"
@@ -226,13 +227,13 @@ app.include_router(ws_router,            prefix=f"{API_PREFIX}/ws",           ta
 
 # ---- Health / Readiness ----
 
-@app.get("/health", tags=["Health"], include_in_schema=False)
+@app.get(f"{API_PREFIX}/health", tags=["Health"], include_in_schema=False)
 async def health_check() -> dict:
     # Always return minimal response — no version, no dependency details
     return {"status": "ok"}
 
 
-@app.get("/ready", tags=["Health"], include_in_schema=False)
+@app.get(f"{API_PREFIX}/ready", tags=["Health"], include_in_schema=False)
 async def readiness_check() -> dict:
     return {"status": "ok"}
 

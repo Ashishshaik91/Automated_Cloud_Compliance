@@ -2,7 +2,7 @@
 WebSocket router — JWT-authenticated live feed endpoint.
 
 Clients connect with:
-  ws://host/api/v1/ws/live?token=<access_token>
+  ws://host/api/v1/ws/live?ticket=<ticket>
 
 Events streamed:
   scan.completed      violation.detected   score.updated
