@@ -188,9 +188,10 @@ def _is_prometheus_allowed(client_ip: str) -> bool:
 
 async def metrics_access_control(request: Request) -> None:
     """
-    Enforce both admin auth AND IP allowlist on /metrics.
+    Enforce the IP allowlist on /metrics.
     Non-allowed IPs receive a stealth 404 (indistinguishable from a missing route).
-    Allowed IPs are still subject to the require_admin dependency.
+    Auth is handled at the network layer — this endpoint is only reachable from
+    the internal Docker network (compliance_net) by authorised Prometheus scrapers.
     """
     client_ip = request.client.host if request.client else ""
     if not _is_prometheus_allowed(client_ip):
@@ -198,7 +199,12 @@ async def metrics_access_control(request: Request) -> None:
 
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
-@app.get("/metrics", tags=["Metrics"], dependencies=[Depends(require_admin), Depends(metrics_access_control)])
+# Security model: auth is enforced at the network layer via the IP allowlist in
+# metrics_access_control. require_admin is intentionally omitted — Prometheus
+# scrapers run on the internal Docker network (compliance_net) and cannot present
+# JWT credentials. External IPs are rejected with a stealth 404 before any data
+# is returned, making this endpoint effectively invisible from outside the cluster.
+@app.get("/metrics", tags=["Metrics"], dependencies=[Depends(metrics_access_control)])
 async def metrics():
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
