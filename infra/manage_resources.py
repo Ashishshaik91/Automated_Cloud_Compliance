@@ -259,14 +259,17 @@ def _api(
 
 
 def get_token(env: dict[str, str]) -> str | None:
-    """Authenticate with the backend and return a JWT token."""
-    # Try reading from env, then prompt
+    """
+    Authenticate with the backend and return a session token.
+    Handles both direct login (no MFA) and the two-step MFA flow.
+    """
+    import getpass
+
     email    = env.get("ADMIN_EMAIL", "admin@compliance.local")
     password = env.get("ADMIN_PASSWORD", "")
 
     if not password:
         print(f"\n{Y}Backend login required (user: {email}){NC}")
-        import getpass
         password = getpass.getpass("Password: ")
 
     print_step(f"Authenticating as {email}...")
@@ -274,10 +277,35 @@ def get_token(env: dict[str, str]) -> str | None:
         "POST", "/api/v1/auth/login",
         body={"email": email, "password": password},
     )
+
+    # ── Direct login (no MFA enrolled) ───────────────────────────────────────
     if status == 200 and "access_token" in resp:
-        print_ok("Authenticated successfully.")
+        print_ok("Authenticated successfully (no MFA).")
         return resp["access_token"]
-    print_warn(f"Auth failed ({status}): {resp.get('error', resp)}")
+
+    # ── MFA challenge — step 2 required ──────────────────────────────────────
+    if status == 200 and resp.get("mfa_required"):
+        pending_token = resp.get("pending_token", "")
+        print_warn("MFA required. Open your authenticator app.")
+        totp_code = input(f"{Y}Enter 6-digit TOTP code: {NC}").strip()
+
+        mfa_status, mfa_resp = _api(
+            "POST", "/api/v1/auth/mfa/verify",
+            body={"pending_token": pending_token, "totp_code": totp_code},
+        )
+        if mfa_status == 200:
+            # Tokens are set in HttpOnly cookies by the server.
+            # The response body contains a sentinel value, not the real token.
+            # For API calls we use the Authorization header pattern — the
+            # access_token value from the body ("cookie-based") is the sentinel.
+            # Instead, return a non-empty marker so callers know auth succeeded,
+            # and rely on the cookie jar being set on the shared SSL context.
+            print_ok("MFA verified. Authenticated successfully.")
+            return mfa_resp.get("access_token", "authenticated")
+        print_warn(f"MFA verification failed ({mfa_status}): {mfa_resp.get('detail', mfa_resp)}")
+        return None
+
+    print_warn(f"Auth failed ({status}): {resp.get('detail', resp.get('error', resp))}")
     return None
 
 

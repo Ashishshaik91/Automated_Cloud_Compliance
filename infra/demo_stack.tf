@@ -47,7 +47,8 @@ resource "aws_s3_bucket_public_access_block" "vulnerable_bucket_public_access" {
 # 2. Non-compliant IAM User
 # Violates: SOC 2, HIPAA, NIST (No MFA, stagnant active access keys)
 resource "aws_iam_user" "vulnerable_user" {
-  name = "demo-unsecured-user"
+  name          = "demo-unsecured-user"
+  force_destroy = true
 }
 resource "aws_iam_access_key" "vulnerable_user_key" {
   user = aws_iam_user.vulnerable_user.name

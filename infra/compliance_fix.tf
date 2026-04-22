@@ -67,24 +67,10 @@ resource "aws_s3_bucket_versioning" "fix_s3_versioning" {
   }
 }
 
-# ─── FIX 4: Security Group — Restrict SSH to internal CIDR only ──────────────
-# Look up the existing vulnerable SG and patch its rules
-data "aws_security_group" "demo_sg" {
-  filter {
-    name   = "group-name"
-    values = ["demo-open-ssh"]
-  }
-}
-
-# Remove the world-open rule by adding a lifecycle-managed replacement
-resource "aws_vpc_security_group_ingress_rule" "fix_ssh_restrict" {
-  security_group_id = data.aws_security_group.demo_sg.id
-  cidr_ipv4         = "10.0.0.0/8"
-  from_port         = 22
-  to_port           = 22
-  ip_protocol       = "tcp"
-  description       = "SSH restricted to internal RFC-1918 only (compliance fix)"
-}
+# ─── FIX 4: Security Group — SSH restriction ─────────────────────────────────
+# NOTE: The 'demo-open-ssh' Security Group no longer exists in AWS.
+# The data source lookup is removed so `terraform destroy` does not fail
+# attempting to refresh a resource that is already gone.
 
 # ─── Outputs ──────────────────────────────────────────────────────────────────
 output "compliance_fixes" {
@@ -92,7 +78,7 @@ output "compliance_fixes" {
     "s3_encryption"    = "✅ AES-256 SSE enabled on ${var.bucket_name}"
     "s3_public_block"  = "✅ All public access blocked on ${var.bucket_name}"
     "s3_versioning"    = "✅ Versioning enabled on ${var.bucket_name}"
-    "security_group"   = "✅ SSH restricted to 10.0.0.0/8 (was 0.0.0.0/0)"
+    "security_group"   = "⚠  demo-open-ssh SG no longer exists in AWS — already removed"
     "cloudtrail_note"  = "⚠  CloudTrail: run 'aws cloudtrail start-logging --name ${var.trail_name}' manually or use platform Execute"
     "iam_note"         = "⚠  IAM MFA: must be enabled manually via AWS console (MFA can't be provisioned by Terraform)"
   }
