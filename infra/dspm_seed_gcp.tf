@@ -126,8 +126,8 @@ resource "google_storage_bucket" "gcs_exposed_legacy" {
   name                        = "pii-exposed-legacy-backup-${random_id.gcp_bucket_suffix.hex}"
   location                    = "US"
   force_destroy               = true
-  uniform_bucket_level_access = false  # legacy ACLs enabled
-  public_access_prevention    = "inherited"  # may allow public access
+  uniform_bucket_level_access = true     # required by org policy constraint
+  public_access_prevention    = "inherited"  # may allow public access — DSPM flags this as critical
 
   labels = {
     classification = "pii"

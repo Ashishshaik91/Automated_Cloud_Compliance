@@ -59,7 +59,7 @@ resource "aws_s3_object" "pii_customers" {
     2,Jane Doe,jane.doe@example.com,987-65-4321,5500005555555559,1990-07-22
     3,Alice Johnson,alice.j@example.com,555-12-3456,378282246310005,1978-11-08
   CSV
-  tags = { Classification = "PII,PCI", Sensitivity = "critical" }
+  tags = { Classification = "PII-PCI", Sensitivity = "critical" }
 }
 
 resource "aws_s3_object" "pii_employees" {
@@ -124,7 +124,7 @@ resource "aws_s3_bucket" "phi_medical" {
   bucket        = "phi-medical-records-${local.sfx}"
   force_destroy = true
   tags = {
-    Classification = "PHI,HIPAA"
+    Classification = "PHI-HIPAA"
     Sensitivity    = "high"
     Environment    = "production"
     Owner          = "medical-team"
@@ -148,7 +148,7 @@ resource "aws_s3_object" "phi_records" {
     { patient_id = "P-001", diagnosis_code = "J18.9", dob = "1965-04-22", insurance_id = "INS-12345" },
     { patient_id = "P-002", diagnosis_code = "E11.9", dob = "1978-09-10", insurance_id = "INS-67890" },
   ])
-  tags = { Classification = "PHI,HIPAA", Sensitivity = "high" }
+  tags = { Classification = "PHI-HIPAA", Sensitivity = "high" }
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -158,7 +158,7 @@ resource "aws_s3_bucket" "gdpr_eu" {
   bucket        = "gdpr-eu-user-data-${local.sfx}"
   force_destroy = true
   tags = {
-    Classification = "GDPR,PII"
+    Classification = "GDPR-PII"
     Sensitivity    = "high"
     Environment    = "production"
     Region         = "eu-west-1"
@@ -184,7 +184,7 @@ resource "aws_s3_object" "gdpr_users" {
     U001,hans.mueller@example.de,DE,2024-01-10,192.168.1.100
     U002,marie.dupont@example.fr,FR,2024-01-12,10.0.0.50
   CSV
-  tags = { Classification = "GDPR,PII", Sensitivity = "high" }
+  tags = { Classification = "GDPR-PII", Sensitivity = "high" }
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -195,7 +195,7 @@ resource "aws_s3_bucket" "exposed_pii" {
   bucket        = "pii-exposed-backup-${local.sfx}"
   force_destroy = true
   tags = {
-    Classification = "PII,PCI"
+    Classification = "PII-PCI"
     Sensitivity    = "critical"
     Environment    = "legacy"
     Owner          = "unknown"

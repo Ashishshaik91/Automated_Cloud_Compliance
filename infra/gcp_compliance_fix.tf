@@ -103,28 +103,11 @@ resource "google_compute_instance" "fix_vm_shielded" {
   }
 }
 
-# ─── FIX 4: GCP IAM — Enforce MFA / 2-Step for service accounts ──────────────
-# NOTE: MFA (2-Step Verification) for human users is an org policy —
-# it cannot be set via Terraform resource directly.
-# Instead, enforce it at the org level:
-resource "google_project_organization_policy" "fix_require_os_login" {
-  project    = var.gcp_project
-  constraint = "compute.requireOsLogin"
-
-  boolean_policy {
-    enforced = true
-  }
-}
-
-# Disable service account key creation (reduces IAM exposure)
-resource "google_project_organization_policy" "fix_disable_sa_key_creation" {
-  project    = var.gcp_project
-  constraint = "iam.disableServiceAccountKeyCreation"
-
-  boolean_policy {
-    enforced = true
-  }
-}
+# ─── FIX 4: GCP IAM — Org Policies ──────────────────────────────────────────
+# google_project_organization_policy requires Organisation Admin permissions.
+# The service account does not have this role, so these are applied manually:
+#   • compute.requireOsLogin  → GCP Console → IAM → Organisation Policies
+#   • iam.disableServiceAccountKeyCreation → same path
 
 # ─── Outputs ──────────────────────────────────────────────────────────────────
 output "gcp_compliance_fixes" {
@@ -132,8 +115,8 @@ output "gcp_compliance_fixes" {
     "gcs_public_access"  = "✅ ${var.gcs_bucket_name} — public_access_prevention set to 'enforced'"
     "gcs_no_public_read" = "✅ ${var.gcs_bucket_name} — allUsers/allAuthenticatedUsers removed from viewer role"
     "vm_shielded"        = "✅ demo-unshielded-vm — Secure Boot, vTPM, Integrity Monitoring all ON; public IP removed"
-    "iam_os_login"       = "✅ OS Login enforced at project level (reduces key-based SSH exposure)"
-    "iam_sa_keys"        = "✅ Service account key creation disabled"
-    "iam_mfa_note"       = "⚠  Human user MFA (St0rage, compliance-platform-reader) — must be enabled via Google Admin Console"
+    "iam_os_login"       = "⚠  OS Login org policy requires Organisation Admin — apply manually in GCP Console"
+    "iam_sa_keys"        = "⚠  SA key creation org policy requires Organisation Admin — apply manually in GCP Console"
+    "iam_mfa_note"       = "⚠  Human user MFA — must be enabled via Google Admin Console"
   }
 }

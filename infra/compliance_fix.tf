@@ -16,9 +16,14 @@
 # ─── Variables ────────────────────────────────────────────────────────────────
 
 variable "bucket_name" {
-  description = "Exact S3 bucket name (check AWS console). Updated automatically from demo_stack outputs."
+  description = "Exact S3 bucket name — defaults to the bucket created by demo_stack.tf"
   type        = string
-  default     = "compliance-demo-bucket-a0bef97c"
+  default     = null  # resolved dynamically below
+}
+
+locals {
+  # Use the explicitly passed bucket_name or fall back to the one created by demo_stack.tf
+  target_bucket = var.bucket_name != null ? var.bucket_name : aws_s3_bucket.vulnerable_bucket.id
 }
 
 variable "trail_name" {
@@ -35,7 +40,7 @@ variable "iam_user" {
 
 # ─── FIX 1: S3 — Enable AES-256 server-side encryption ───────────────────────
 resource "aws_s3_bucket_server_side_encryption_configuration" "fix_s3_encryption" {
-  bucket = var.bucket_name
+  bucket = local.target_bucket
 
   rule {
     apply_server_side_encryption_by_default {
@@ -48,7 +53,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "fix_s3_encryption
 # ─── FIX 2: S3 — Block all public access ─────────────────────────────────────
 # Overrides the vulnerable_bucket_public_access block in demo_stack.tf
 resource "aws_s3_bucket_public_access_block" "fix_s3_public_access" {
-  bucket = var.bucket_name
+  bucket = local.target_bucket
 
   block_public_acls       = true
   block_public_policy     = true
@@ -60,7 +65,7 @@ resource "aws_s3_bucket_public_access_block" "fix_s3_public_access" {
 
 # ─── FIX 3: S3 — Enable versioning ───────────────────────────────────────────
 resource "aws_s3_bucket_versioning" "fix_s3_versioning" {
-  bucket = var.bucket_name
+  bucket = local.target_bucket
 
   versioning_configuration {
     status = "Enabled"
@@ -75,9 +80,9 @@ resource "aws_s3_bucket_versioning" "fix_s3_versioning" {
 # ─── Outputs ──────────────────────────────────────────────────────────────────
 output "compliance_fixes" {
   value = {
-    "s3_encryption"    = "✅ AES-256 SSE enabled on ${var.bucket_name}"
-    "s3_public_block"  = "✅ All public access blocked on ${var.bucket_name}"
-    "s3_versioning"    = "✅ Versioning enabled on ${var.bucket_name}"
+    "s3_encryption"    = "✅ AES-256 SSE enabled on ${local.target_bucket}"
+    "s3_public_block"  = "✅ All public access blocked on ${local.target_bucket}"
+    "s3_versioning"    = "✅ Versioning enabled on ${local.target_bucket}"
     "security_group"   = "⚠  demo-open-ssh SG no longer exists in AWS — already removed"
     "cloudtrail_note"  = "⚠  CloudTrail: run 'aws cloudtrail start-logging --name ${var.trail_name}' manually or use platform Execute"
     "iam_note"         = "⚠  IAM MFA: must be enabled manually via AWS console (MFA can't be provisioned by Terraform)"
