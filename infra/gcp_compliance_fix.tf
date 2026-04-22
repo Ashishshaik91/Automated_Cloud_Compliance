@@ -38,6 +38,7 @@ variable "gcp_zone" {
 # Changes public_access_prevention from "inherited" → "enforced"
 # This ensures no object or bucket-level IAM can make content public.
 resource "google_storage_bucket" "fix_gcs_public_access" {
+  count                       = var.apply_fixes ? 1 : 0
   name                        = var.gcs_bucket_name
   location                    = "US"
   force_destroy               = true
@@ -58,6 +59,7 @@ resource "google_storage_bucket" "fix_gcs_public_access" {
 # ─── FIX 2: GCS Bucket — Enable uniform bucket-level access (already true)
 #     and add default encryption (Google-managed key)
 resource "google_storage_bucket_iam_binding" "fix_gcs_no_public_read" {
+  count  = var.apply_fixes ? 1 : 0
   bucket = var.gcs_bucket_name
   role   = "roles/storage.objectViewer"
 
@@ -72,6 +74,7 @@ resource "google_storage_bucket_iam_binding" "fix_gcs_no_public_read" {
 # Replaces the demo VM's shielded_instance_config (all false → all true).
 # Also removes the public IP (access_config block removal).
 resource "google_compute_instance" "fix_vm_shielded" {
+  count        = var.apply_fixes ? 1 : 0
   name         = "demo-unshielded-vm"
   machine_type = "e2-micro"
   zone         = var.gcp_zone

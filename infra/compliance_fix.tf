@@ -40,6 +40,7 @@ variable "iam_user" {
 
 # ─── FIX 1: S3 — Enable AES-256 server-side encryption ───────────────────────
 resource "aws_s3_bucket_server_side_encryption_configuration" "fix_s3_encryption" {
+  count  = var.apply_fixes ? 1 : 0
   bucket = local.target_bucket
 
   rule {
@@ -53,6 +54,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "fix_s3_encryption
 # ─── FIX 2: S3 — Block all public access ─────────────────────────────────────
 # Overrides the vulnerable_bucket_public_access block in demo_stack.tf
 resource "aws_s3_bucket_public_access_block" "fix_s3_public_access" {
+  count  = var.apply_fixes ? 1 : 0
   bucket = local.target_bucket
 
   block_public_acls       = true
@@ -65,6 +67,7 @@ resource "aws_s3_bucket_public_access_block" "fix_s3_public_access" {
 
 # ─── FIX 3: S3 — Enable versioning ───────────────────────────────────────────
 resource "aws_s3_bucket_versioning" "fix_s3_versioning" {
+  count  = var.apply_fixes ? 1 : 0
   bucket = local.target_bucket
 
   versioning_configuration {
@@ -98,6 +101,7 @@ output "next_steps" {
 # Fully automates MFA by using pyotp and boto3 inside the backend container to
 # generate virtual MFA tokens and bind them to the user.
 resource "null_resource" "automate_mfa" {
+  count = var.apply_fixes ? 1 : 0
   provisioner "local-exec" {
     command = "docker compose -f ../docker-compose.yml exec -T backend sh /app/secrets/run_mfa.sh"
   }
