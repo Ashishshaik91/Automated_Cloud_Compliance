@@ -51,19 +51,6 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "fix_s3_encryption
   }
 }
 
-# ─── FIX 2: S3 — Block all public access ─────────────────────────────────────
-# Overrides the vulnerable_bucket_public_access block in demo_stack.tf
-resource "aws_s3_bucket_public_access_block" "fix_s3_public_access" {
-  count  = var.apply_fixes ? 1 : 0
-  bucket = local.target_bucket
-
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-
-  depends_on = [aws_s3_bucket_server_side_encryption_configuration.fix_s3_encryption]
-}
 
 # ─── FIX 3: S3 — Enable versioning ───────────────────────────────────────────
 resource "aws_s3_bucket_versioning" "fix_s3_versioning" {

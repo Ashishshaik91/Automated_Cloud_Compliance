@@ -21,7 +21,7 @@ resource "google_storage_bucket" "vulnerable_gcs_bucket" {
   location                    = "US"
   force_destroy               = true
   uniform_bucket_level_access = true   # org policy enforces this; violation detected via public_access_prevention
-  public_access_prevention    = "inherited"
+  public_access_prevention    = var.apply_fixes ? "enforced" : "inherited"
 }
 
 # 2. Non-compliant Compute Engine Instance
@@ -39,15 +39,18 @@ resource "google_compute_instance" "vulnerable_vm" {
 
   network_interface {
     network = "default"
-    access_config {
-      # Leaving this block empty automatically provisions an ephemeral Public IP
+    dynamic "access_config" {
+      for_each = var.apply_fixes ? [] : [1]
+      content {
+        # Ephemeral Public IP assigned only when vulnerable
+      }
     }
   }
 
   shielded_instance_config {
-    enable_secure_boot          = false
-    enable_vtpm                 = false
-    enable_integrity_monitoring = false
+    enable_secure_boot          = var.apply_fixes
+    enable_vtpm                 = var.apply_fixes
+    enable_integrity_monitoring = var.apply_fixes
   }
 
   # Allow instance to be deleted even if it's running

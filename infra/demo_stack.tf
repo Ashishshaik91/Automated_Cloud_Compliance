@@ -38,10 +38,10 @@ resource "aws_s3_bucket" "vulnerable_bucket" {
 resource "aws_s3_bucket_public_access_block" "vulnerable_bucket_public_access" {
   bucket = aws_s3_bucket.vulnerable_bucket.id
 
-  block_public_acls       = false
-  block_public_policy     = false
-  ignore_public_acls      = false
-  restrict_public_buckets = false
+  block_public_acls       = var.apply_fixes
+  block_public_policy     = var.apply_fixes
+  ignore_public_acls      = var.apply_fixes
+  restrict_public_buckets = var.apply_fixes
 }
 
 # 2. Non-compliant IAM User
