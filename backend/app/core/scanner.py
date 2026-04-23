@@ -23,6 +23,7 @@ from app.core.policy_loader import PolicyLoader
 from app.core.evidence import EvidenceManager
 from app.models.compliance import CloudAccount, ScanResult, ComplianceCheck
 from app.models.database import AsyncSessionLocal
+from app.core.violations_engine import run_violations_engine
 
 settings = get_settings()
 logger = structlog.get_logger(__name__)
@@ -334,6 +335,14 @@ async def _async_scheduled_scan(
             terraform_working_dir=terraform_working_dir,
         )
         await db.commit()
+
+        # ── Sync violations table with latest scan results ─────────────────────
+        try:
+            v_count = await run_violations_engine(db)
+            await db.commit()
+            logger.info("Violations engine synced after scan", violations=v_count, scan_id=scan.id)
+        except Exception as v_exc:
+            logger.error("Violations engine sync failed", error=str(v_exc), scan_id=scan.id)
 
         # ── Fire email alert after every scan ───────────────────────────────
         try:
