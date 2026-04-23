@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import structlog
-from sqlalchemy import select, update, delete
+from sqlalchemy import select, update, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.violations import Violation, ViolationRule
@@ -215,12 +215,18 @@ async def run_violations_engine(db: AsyncSession) -> int:
 
     created = 0
 
-    # 2. Query live failed compliance checks
+    # 2. Query live failed compliance checks from the most recent scan per account
+    subq = (
+        select(func.max(ScanResult.id).label("max_scan_id"))
+        .group_by(ScanResult.account_id)
+    ).scalar_subquery()
+
     stmt = (
         select(ComplianceCheck, ScanResult, CloudAccount)
         .join(ScanResult, ComplianceCheck.scan_id == ScanResult.id)
         .join(CloudAccount, ScanResult.account_id == CloudAccount.id)
         .where(ComplianceCheck.status == "fail")
+        .where(ScanResult.id.in_(subq))
     )
     
     results = await db.execute(stmt)
